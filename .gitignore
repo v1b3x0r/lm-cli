@@ -1,0 +1,6 @@
+/bin/
+/.local/
+*.grant.json
+/dist/
+/docs/release-status.md
+/docs/backend-contract.md
