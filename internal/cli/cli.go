@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var version = "0.1.0-dev"
+var version = "0.1.0-rc.2"
 
 const maxResponse = 2 << 20
 

@@ -17,7 +17,7 @@ curl -fsSL https://living-memory-cli.pages.dev/install.sh | sh
 ```
 
 Open a new Terminal tab and run `lm version`. The installer currently distributes
-[0.1.0-rc.1](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.1).
+[0.1.0-rc.2](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.2).
 The identity output described below is in source and has not been released yet.
 To try this checkout, with Go installed:
 
@@ -58,13 +58,13 @@ Agent A enters Room -> leaves context -> process/model/machine changes
                                         -> Agent B enters the same Room -> continues
 ```
 
-| What you see | What it means |
-| --- | --- |
-| `my-project` | A local alias on this machine. Another machine can use a different alias. |
-| Room ID (`w_…`) | The canonical resource identity supplied by the server. It is not a door credential. |
-| Open / Guide | The same Theatre entrance, with the actual `ons_…` or `ro_…` door token after `#`. Open it, then use the Theatre's Enter action. |
-| MCP | The agent endpoint from the saved grant. |
-| Expires | The expiry recorded at creation. It is a snapshot, not the current server expiry. |
+| What you see    | What it means                                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `my-project`    | A local alias on this machine. Another machine can use a different alias.                                                        |
+| Room ID (`w_…`) | The canonical resource identity supplied by the server. It is not a door credential.                                             |
+| Open / Guide    | The same Theatre entrance, with the actual `ons_…` or `ro_…` door token after `#`. Open it, then use the Theatre's Enter action. |
+| MCP             | The agent endpoint from the saved grant.                                                                                         |
+| Expires         | The expiry recorded at creation. It is a snapshot, not the current server expiry.                                                |
 
 `lm list` answers **which keys are saved on this machine**. It makes no network
 requests. `lm inspect my-project` looks through that door to read the current
@@ -177,11 +177,11 @@ also includes structured errors in its JSON result.
 Room summaries retain `name`, `kind`, `expiresAtAtCreation`, `saved`, and `next`,
 and add:
 
-| Field | Contents |
-| --- | --- |
-| `identity` | `alias`, canonical `roomId` or null, and `source` (`unknown`, `local_snapshot`, or `live`). |
+| Field       | Contents                                                                                                       |
+| ----------- | -------------------------------------------------------------------------------------------------------------- |
+| `identity`  | `alias`, canonical `roomId` or null, and `source` (`unknown`, `local_snapshot`, or `live`).                    |
 | `addresses` | `open`, `guide`, `mcp`, `access`, and a credential-specific `warning`. Unsupported browser entrances are null. |
-| `lifecycle` | `expiresAtAtCreation`, `currentExpiresAt` (currently null), `source`, and server lifecycle `note`. |
+| `lifecycle` | `expiresAtAtCreation`, `currentExpiresAt` (currently null), `source`, and server lifecycle `note`.             |
 
 List retains `{scope: "local", rooms: [...]}`. Pending/unreadable local grants
 have `saved: false` and `state: "unavailable_or_pending"`. Inspect retains `name`
@@ -207,7 +207,7 @@ agent directory followed by resume. The purchase entry returned HTTP 200; no
 purchase or authenticated checkout was performed. These are prior release
 checks, not evidence that the identity changes have been deployed.
 
-Run `python3 scripts/package.py 0.1.0-rc.1` to build macOS/Linux bundles with
+Run `python3 scripts/package.py 0.1.0-rc.2` to build macOS/Linux bundles with
 checksums and the agent quickstart. Publishing remains a separate step after
 verification. World administration, step-up authentication, watch, and UI are
 outside this slice.

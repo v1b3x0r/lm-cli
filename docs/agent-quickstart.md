@@ -3,7 +3,7 @@
 Use `lm` to keep project context across processes and transfer work between
 agents. Start with a free Room when a temporary shared space is sufficient.
 Use only the official binary/source given by the owner; see `INSTALL.md` in a
-release bundle. Download the preview from https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.1.
+release bundle. Download the preview from https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.2.
 
 ## Start once
 
