@@ -22,7 +22,7 @@ func TestCreateAndInspect(t *testing.T) {
 				}
 				if r.URL.Path == "/ons/new" {
 					w.WriteHeader(201)
-					fmt.Fprintf(w, `{"url":%q,"expiresAt":"2026-10-11T00:00:00.000Z","note":"server lifecycle"}`, server.URL+"/t/fake-credential/mcp")
+					fmt.Fprintf(w, `{"url":%q,"expiresAt":"2026-10-11T00:00:00.000Z","note":"server lifecycle","roomId":"w_0123456789abcdef0123456789abcdef"}`, server.URL+"/t/fake-credential/mcp")
 					return
 				}
 				var request struct {
@@ -55,14 +55,14 @@ func TestCreateAndInspect(t *testing.T) {
 			if code := run(c, []string{"create", "sample", "--room", "--json"}, strings.NewReader(""), &out, &stderr); code != 0 {
 				t.Fatal(stderr.String())
 			}
-			if strings.Contains(out.String(), "fake-credential") {
-				t.Fatal("create leaked credential")
+			if !strings.Contains(out.String(), "fake-credential") {
+				t.Fatal("create must show the MCP address")
 			}
 			grant, err := c.load("sample")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if grant.Name != "sample" || grant.Note != "server lifecycle" || grant.Warning == "" {
+			if grant.Name != "sample" || grant.RoomID != testRoomID || grant.Note != "server lifecycle" || grant.Warning == "" {
 				t.Fatal("incomplete saved grant")
 			}
 			out.Reset()
@@ -74,8 +74,8 @@ func TestCreateAndInspect(t *testing.T) {
 			if code := run(c, []string{"inspect", "--json"}, strings.NewReader(input), &out, &stderr); code != 0 {
 				t.Fatal(stderr.String())
 			}
-			if strings.Contains(out.String(), "fake-credential") {
-				t.Fatal("inspect leaked credential")
+			if !strings.Contains(out.String(), "fake-credential") {
+				t.Fatal("inspect must show the MCP address")
 			}
 			var info Inspection
 			if err := json.Unmarshal(out.Bytes(), &info); err != nil {

@@ -5,6 +5,25 @@ Obtain the archive and `SHA256SUMS` from the
 [official release](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.1).
 Do not fetch similarly named packages from an unrelated registry.
 
+## One command (macOS / Linux, zsh or bash)
+
+```sh
+curl -fsSL https://living-memory-cli.pages.dev/install.sh | sh
+```
+
+The installer selects the matching release, checks its SHA-256 checksum, and
+installs `lm` in `~/.local/bin`. It adds that directory to your shell profile.
+No administrator access, Go, or Node.js is required. It refuses to overwrite a
+different executable; rerunning the same version is safe.
+
+Open a **new Terminal tab**, then run `lm version` and follow the
+[first Room walkthrough](first-room.md).
+
+To inspect the installer first, read [scripts/install.sh](../scripts/install.sh).
+For another shell or a manual install, use the release files below.
+
+## Manual download
+
 Choose your platform:
 
 | Machine | Bundle suffix |
@@ -28,10 +47,8 @@ lm version
 ```
 
 This refuses to overwrite an existing `lm`. If that name is already installed,
-inspect the existing command first. The PATH change applies to this shell; make
-it persistent in your shell configuration if desired. macOS bundles are not
-Developer ID signed/notarized; if macOS blocks execution, do not bypass the
-warning. A signed release or a reviewed source build is required in that case.
+inspect the existing command first. The PATH change applies to this shell. The one-command installer above sets
+up future zsh/bash sessions automatically.
 
 Windows is deferred until private credential storage is implemented and tested
 with Windows ACLs. This candidate includes macOS and Linux only.

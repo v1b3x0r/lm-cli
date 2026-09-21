@@ -16,7 +16,19 @@ lm inspect my-project --json
 
 Use an existing alias if this project already has one. Never create another Room
 just to resume. Local names are not remote resource IDs. The credential is saved
-privately; do not print/export it just to check that creation worked.
+privately. create/list/inspect deliberately display full door links, so keep
+those outputs private unless sharing that door's access is intended.
+
+`list` reads local snapshots without networking. `inspect` reads the live Room's
+canonical ID (`w_…`), memory state, and available tools. Open and Guide both point
+to Theatre with the actual `ons_…`/`ro_…` token in the fragment; MCP is the same
+door's agent endpoint. Never substitute the canonical ID into the fragment.
+Older grants learn/cache their ID through inspect when `world_list` is offered.
+Creation-time expiry is a snapshot; current expiry is unknown.
+
+A failed inspect keeps local identity in stdout, reports `partial_failure` and
+structured errors with `--json`, and exits nonzero. A 502 does not mean the Room
+is gone. No automatic retries or replacement Rooms.
 
 ## Continue across sessions
 

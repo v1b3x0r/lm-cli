@@ -53,7 +53,7 @@ func TestSavedRoomLoopAndTransfer(t *testing.T) {
 		code := run(client, args, strings.NewReader(input), &out, &stderr)
 		return code, out.String() + stderr.String()
 	}
-	if code, msg := invoke(c, "", "create", "demo", "--room", "--json"); code != 0 || strings.Contains(msg, "fake-secret") {
+	if code, msg := invoke(c, "", "create", "demo", "--room", "--json"); code != 0 || !strings.Contains(msg, "fake-secret") {
 		t.Fatal(code, msg)
 	}
 	info, err := os.Stat(filepath.Join(c.Home, "demo.grant.json"))
@@ -78,7 +78,7 @@ func TestSavedRoomLoopAndTransfer(t *testing.T) {
 	if code, msg := invoke(other, "", "resume", "received", "--json"); code != 0 || !strings.Contains(msg, "continue from checkpoint") {
 		t.Fatal(code, msg)
 	}
-	if code, msg := invoke(other, "", "list", "--json"); code != 0 || strings.Contains(msg, "fake-secret") {
+	if code, msg := invoke(other, "", "list", "--json"); code != 0 || !strings.Contains(msg, "fake-secret") {
 		t.Fatal(code, msg)
 	}
 	if code, msg := invoke(c, "do not store", "remember", "demo", "--json"); code != 1 {

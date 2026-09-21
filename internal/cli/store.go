@@ -84,9 +84,9 @@ func (c Client) load(name string) (Grant, error) {
 		return g, errors.New("grant unavailable; a previous creation may have an unknown outcome — do not blindly recreate")
 	}
 	g.Name = name
+	if !roomIDPattern.MatchString(g.RoomID) {
+		g.RoomID = ""
+	}
+	g.Warning = addresses(g.URL).Warning
 	return g, nil
-}
-
-func summary(g Grant) map[string]any {
-	return map[string]any{"name": g.Name, "kind": g.Kind, "expiresAtAtCreation": g.ExpiresAt, "saved": true, "next": "lm inspect " + g.Name + " --json"}
 }

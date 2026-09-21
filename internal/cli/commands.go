@@ -47,19 +47,40 @@ func (c Client) extra(command string, args []string, room, asJSON bool, in io.Re
 		if err != nil {
 			return fail(errors.New("cannot read local inventory"))
 		}
-		rows := []map[string]any{}
+		rows := []RoomSummary{}
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".grant.json") {
 				name := strings.TrimSuffix(e.Name(), ".grant.json")
 				g, err := c.load(name)
 				if err != nil {
-					rows = append(rows, map[string]any{"name": name, "state": "unavailable_or_pending"})
+					row := summary(Grant{Name: name})
+					row.Saved = false
+					row.State = "unavailable_or_pending"
+					row.Next = "Check the saved grant; do not blindly recreate this Room."
+					rows = append(rows, row)
 				} else {
 					rows = append(rows, summary(g))
 				}
 			}
 		}
-		return emit(map[string]any{"scope": "local", "rooms": rows})
+		if asJSON {
+			return emit(map[string]any{"scope": "local", "rooms": rows})
+		}
+		if _, err := fmt.Fprintln(out, "Local Rooms (saved snapshots; no network lookup):"); err != nil {
+			return fail(errors.New("output failed"))
+		}
+		if len(rows) == 0 {
+			_, err = fmt.Fprintln(out, "No Rooms saved here. Next: lm create my-room --room")
+		}
+		for _, row := range rows {
+			if err == nil {
+				err = renderSummary(out, row)
+			}
+		}
+		if err != nil {
+			return fail(errors.New("output failed"))
+		}
+		return 0
 	}
 	tool := map[string]string{"remember": "memory_add", "recall": "memory_search", "handoff": "handoff_post", "resume": "handoff_read", "state": "memory_state"}[command]
 	if tool == "" && command != "export" && command != "import" {
@@ -76,7 +97,10 @@ func (c Client) extra(command string, args []string, room, asJSON bool, in io.Re
 		}
 		g.Name = args[0]
 		g.Kind = "room"
-		g.Warning = warning
+		g.Warning = addresses(g.URL).Warning
+		if !roomIDPattern.MatchString(g.RoomID) {
+			g.RoomID = ""
+		}
 		path, err := c.reserve(g.Name)
 		if err != nil {
 			return fail(err)
@@ -109,7 +133,7 @@ func (c Client) extra(command string, args []string, room, asJSON bool, in io.Re
 		}
 	}
 	// Discover before calling: read-only doors and unavailable tools are real server boundaries.
-	inventory, err := c.Inspect(g)
+	inventory, err := c.Discover(g)
 	if err != nil {
 		return fail(err)
 	}

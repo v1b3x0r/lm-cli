@@ -17,10 +17,10 @@ import (
 var version = "0.1.0-dev"
 
 const maxResponse = 2 << 20
-const warning = "Anyone holding this URL can read and write the room. Keep the grant private."
 
 type Grant struct {
 	Name      string `json:"name"`
+	RoomID    string `json:"roomId,omitempty"`
 	Kind      string `json:"kind"`
 	URL       string `json:"url"`
 	ExpiresAt string `json:"expiresAt"`
@@ -97,7 +97,10 @@ func (c Client) Create(name string) (Grant, error) {
 	}
 	g.Name = name
 	g.Kind = "room"
-	g.Warning = warning
+	g.Warning = addresses(g.URL).Warning
+	if !roomIDPattern.MatchString(g.RoomID) {
+		g.RoomID = ""
+	}
 	return g, nil
 }
 
@@ -144,20 +147,20 @@ func (c Client) rpc(address, method string, params any, id int, result any) erro
 	return errors.New("invalid MCP response")
 }
 
-type Inspection struct {
+type Discovery struct {
 	Name  string   `json:"name"`
 	Tools []string `json:"tools"`
 }
 
-func (c Client) Inspect(g Grant) (Inspection, error) {
-	out := Inspection{Name: g.Name, Tools: []string{}}
+func (c Client) Discover(g Grant) (Discovery, error) {
+	out := Discovery{Name: g.Name, Tools: []string{}}
 	if !validAddress(g.URL) {
 		return out, errors.New("grant requires a HTTPS room URL (HTTP allowed only on loopback)")
 	}
 	var initialized map[string]any
 	err := c.rpc(g.URL, "initialize", map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "clientInfo": map[string]string{"name": "lm-cli", "version": version}}, 1, &initialized)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("initialize: %w", err)
 	}
 	cursor := ""
 	seen := map[string]bool{}
@@ -173,10 +176,10 @@ func (c Client) Inspect(g Grant) (Inspection, error) {
 			NextCursor string `json:"nextCursor"`
 		}
 		if err = c.rpc(g.URL, "tools/list", params, id, &page); err != nil {
-			return out, err
+			return out, fmt.Errorf("discovery: %w", err)
 		}
 		if page.Tools == nil {
-			return out, errors.New("server did not return a tool inventory")
+			return out, errors.New("discovery: server did not return a tool inventory")
 		}
 		for _, t := range page.Tools {
 			out.Tools = append(out.Tools, t.Name)
@@ -185,19 +188,19 @@ func (c Client) Inspect(g Grant) (Inspection, error) {
 			return out, nil
 		}
 		if seen[page.NextCursor] {
-			return out, errors.New("server repeated a tools cursor")
+			return out, errors.New("discovery: server repeated a tools cursor")
 		}
 		seen[page.NextCursor] = true
 		cursor = page.NextCursor
 	}
-	return out, errors.New("tool inventory exceeded page limit")
+	return out, errors.New("discovery: tool inventory exceeded page limit")
 }
 
 const help = `lm — Living Memory from your terminal
 
   lm create <name> --room [--json]  Create and privately save a free Room
-  lm list [--json]                 List local room aliases (not owner inventory)
-  lm inspect [name] [--json]       Discover server tools; without name read grant stdin
+  lm list [--json]                 Show local Room identities and saved snapshots
+  lm inspect [name] [--json]       Inspect identity, lifecycle, state and tools; or read grant stdin
   lm remember <name> [--json]      Store memory text from stdin
   lm recall <name> [--json]        Search using query text from stdin
   lm handoff <name> [--json]       Save a temporary note from stdin
@@ -209,7 +212,9 @@ const help = `lm — Living Memory from your terminal
   lm version
 
 Names are local aliases. Credentials stay in the user config directory (LM_HOME
-can override it). Reading a Room may extend its inactivity expiry. World purchase
+can override it). create/list/inspect show full door links; holders gain that
+door's access. list is local; inspect contacts the Room. Reading a Room may
+extend its inactivity expiry. World purchase
 does not automatically migrate a Room. No CLI login or World approval yet.
 `
 
@@ -261,7 +266,7 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 		if asJSON {
 			err = json.NewEncoder(out).Encode(summary(g))
 		} else {
-			_, err = fmt.Fprintf(out, "Created room %q; credential saved privately.\nNext: lm inspect %s --json\n", g.Name, g.Name)
+			err = renderSummary(out, summary(g))
 		}
 		if err != nil {
 			return fail(errors.New("room created but output failed; do not blindly retry"))
@@ -283,23 +288,34 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 		if err != nil {
 			return fail(err)
 		}
-		info, err := c.Inspect(g)
-		if err != nil {
-			return fail(err)
+		info, inspectErr := c.Inspect(g)
+		if len(positional) == 0 {
+			info.Saved = false
+		}
+		if len(positional) == 1 && info.Identity.Source == "live" && info.Identity.RoomID != nil && *info.Identity.RoomID != g.RoomID {
+			g.RoomID = *info.Identity.RoomID
+			g.Warning = addresses(g.URL).Warning
+			path, saveErr := c.storePath(g.Name)
+			if saveErr == nil {
+				saveErr = c.save(path, g)
+			}
+			if saveErr != nil {
+				info.addIssue("local_cache", saveErr)
+				inspectErr = info.failure()
+			}
 		}
 		if asJSON {
 			err = json.NewEncoder(out).Encode(info)
 		} else {
-			_, err = fmt.Fprintf(out, "Room label: %q\nAvailable tools:\n", info.Name)
-			for _, name := range info.Tools {
-				if err == nil {
-					_, err = fmt.Fprintf(out, "  %q\n", name)
-				}
-			}
+			err = renderInspection(out, info)
 		}
 		if err != nil {
 			return fail(errors.New("output failed"))
 		}
+		if inspectErr != nil {
+			return fail(inspectErr)
+		}
+
 	default:
 		return c.extra(args[0], positional, room, asJSON, in, out, stderr)
 	}
