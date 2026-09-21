@@ -2,7 +2,7 @@
 # Install the official lm release without administrator access.
 set -eu
 main() {
-VERSION=0.1.0-rc.1
+VERSION=0.1.0-rc.2
 fail() { printf 'lm install: %s\n' "$*" >&2; exit 1; }
 for tool in curl tar awk mktemp install cmp; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command missing: $tool"
