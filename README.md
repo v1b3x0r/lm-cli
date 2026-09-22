@@ -16,11 +16,11 @@ macOS or Linux:
 curl -fsSL https://living-memory-cli.pages.dev/install.sh | sh
 ```
 
-Open a new Terminal tab and run `lm version`. The installer in this checkout targets
+Open a new Terminal tab and run `lm version`. The published installer still targets
 [0.1.0-rc.3](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.3).
-Publish the RC3 release assets and deploy the matching backend before using the
-public read-only entrances described below.
-To try this checkout, with Go installed:
+This checkout builds `0.1.0-rc.4-dev`; it is a candidate, not a released RC4.
+Deploy the new `/spaces` backend before testing its account inventory. To try
+this checkout, with Go installed:
 
 ```sh
 go build -o bin/lm ./cmd/lm
@@ -67,9 +67,10 @@ Agent A enters Room -> leaves context -> process/model/machine changes
 | MCP             | The agent endpoint from the saved grant.                                                                                         |
 | Expires         | The expiry recorded at creation. It is a snapshot, not the current server expiry.                                                |
 
-`lm list` answers **which keys are saved on this machine**. It makes no network
-requests. `lm inspect my-project` looks through that door to read the current
-identity, memory state, and available tools.
+`lm list` combines saved Rooms with authenticated Worlds when you are signed in.
+It shows a compact table without credential URLs. If the World lookup fails,
+local Rooms remain visible and the command labels the remote failure. Use
+`lm inspect my-project` for the Room's exact entrances and live status.
 
 Open and Guide share one read-only Theatre address for publication. MCP is the
 owner's write-capable endpoint: keep it private. Both doors reach the same Room.
@@ -127,17 +128,54 @@ JS SDK's `enterSpace(url)`.
 lm world --json
 ```
 
-This returns the existing [World purchase flow](https://living-memory.app/create#world).
-The human signs in, reviews the current plan, and pays through the existing
-checkout. Existing subscribers should use their existing World setup. The CLI
-does not charge, claim payment success, or send the Room credential to the site.
+This points to the existing [World plan and checkout](https://viibe.to/living-memory/keep/)
+with Terms and Privacy links. Sign in with the same account, review the plan,
+and complete checkout on the site. Then run `lm world` again: it checks current
+entitlement and, when active, opens your World through MCP and confirms its
+canonical identity. The CLI does not charge, infer payment success, or send a
+Room credential to the site.
 No price is hard-coded; the website remains the purchase authority.
 
-**A World purchase does not automatically migrate this Room.** CLI login,
-payment confirmation/resume, and Room-to-World migration remain unimplemented.
-This is a Room entry path with a purchase handoff, not a verified paid conversion
-loop. `ROOM_FULL` points to `lm world` while explaining that existing memories
-remain readable. Other rate limits do not necessarily mean the Room is full.
+**A World purchase does not automatically migrate this Room.** `ROOM_FULL`
+points to `lm world` while existing memories remain readable. Other rate limits
+do not necessarily mean the Room is full.
+
+## Account login (RC4 source candidate)
+
+The released RC3 remains the Room release. Build this checkout to try RC4;
+no new release or installer version has been published for this feature.
+
+```sh
+go build -o bin/lm-account ./cmd/lm
+./bin/lm-account login
+./bin/lm-account inspect --account
+./bin/lm-account state --account
+printf '%s' 'A fact for my World.' | ./bin/lm-account remember --account
+./bin/lm-account logout
+```
+
+Login opens the existing browser consent flow and waits up to five minutes for
+an IPv4 loopback callback. State, the exact issuer, and PKCE S256 are checked.
+The public client registration is reused on later logins with its saved callback
+port; if that port is occupied, close the conflicting process and retry.
+
+Login succeeds independently of World entitlement. `lm list` then combines
+local Rooms and the account's World; `lm world` guides an unpaid account to the
+plan or activates an entitled World. A Space name works when unique. If names
+collide, use `room:<alias>` or `world:<id>` from `lm list --json` with inspect,
+remember, recall, handoff, resume, or state. `--account` remains available for
+the default World during RC4. Authentication alone does not buy a subscription,
+migrate Rooms, or create a public share link.
+
+OAuth credentials live in private `account.json` under the same configuration
+root, separate from Room grants. They are never included by list/export/import.
+Access tokens refresh before expiry, with rotated tokens saved atomically before
+sending the MCP operation. Concurrent account commands fail with a lock message;
+failed or rejected MCP operations are not automatically replayed. A revoked or
+expired refresh token requires login again. Logout deletes local credentials,
+not the provider authorization. Tokens are protected by filesystem permissions,
+not encrypted by an OS keychain. After a crashed command, remove the
+`account.json.lock` directory only after confirming no account command is running.
 
 ## Security and behavior
 
@@ -146,7 +184,7 @@ files 0600). `LM_HOME` selects another private directory. Create refuses an
 existing alias before networking. A creation timeout leaves a pending reservation
 because retrying could create a second Room. Do not remove it and retry blindly.
 
-Normal identity output deliberately includes full door links. Keep those links
+Inspect and create deliberately include full door links; list omits them. Keep those links
 and exported grants out of public reports, logs, repositories, and screenshots
 unless you intend to share the access they grant. Room IDs and local aliases do
 not grant access. Warnings describe the recognized door credential; custom
@@ -176,7 +214,7 @@ results and stderr diagnostics. Diagnostics are plain text; a failed inspect
 also includes structured errors in its JSON result.
 
 Room summaries retain `name`, `kind`, `expiresAtAtCreation`, `saved`, and `next`,
-and add:
+and add a `space` projection with canonical ID, type, access, lifecycle and state:
 
 | Field       | Contents                                                                                                       |
 | ----------- | -------------------------------------------------------------------------------------------------------------- |
@@ -184,7 +222,10 @@ and add:
 | `addresses` | `open`, `guide`, `mcp`, `access`, and a credential-specific `warning`. Unsupported browser entrances are null. |
 | `lifecycle` | `expiresAtAtCreation`, `currentExpiresAt` (currently null), `source`, and server lifecycle `note`.             |
 
-List retains `{scope: "local", rooms: [...]}`. Pending/unreadable local grants
+List includes `rooms` for RC3 compatibility and adds `spaces`, `remoteStatus`,
+`status`, and nullable `entitled`. List entries omit all door credentials;
+`inspect` and `export` retain their explicit entrance/secret behavior.
+Pending/unreadable local grants
 have `saved: false` and `state: "unavailable_or_pending"`. Inspect retains `name`
 and `tools`, and adds `status`, `state: {status, data}`, `capabilities: {status,
 tools}`, and `errors: [{stage, message}]`. State data comes from `memory_state`;

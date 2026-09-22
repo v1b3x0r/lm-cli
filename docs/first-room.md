@@ -61,9 +61,9 @@ printf '%s' 'What is our project color?' | lm recall my-room
 Look for the saved fact about amber in the returned memories. Use the same Room
 name next time; do not create another Room to resume.
 
-Free Rooms have usage and inactivity limits. This CLI currently works with Room
-credentials saved on your machine. `lm list` shows local snapshots without a
-network lookup. Creation-time expiry is not current server expiry. If inspect
+Free Rooms have usage and inactivity limits. `lm list` shows local Rooms and,
+when signed in, the account World. A failed World lookup does not hide local
+Rooms. Creation-time expiry is not current server expiry. If inspect
 fails, local identity remains visible, the result is partial, and the command
 exits nonzero; a network error does not mean the Room disappeared.
 

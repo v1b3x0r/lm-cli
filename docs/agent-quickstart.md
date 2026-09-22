@@ -16,10 +16,11 @@ lm inspect my-project --json
 
 Use an existing alias if this project already has one. Never create another Room
 just to resume. Local names are not remote resource IDs. The credential is saved
-privately. create/list/inspect deliberately display full door links, so keep
-those outputs private unless sharing that door's access is intended.
+privately. Create and inspect display full door links; list omits them. Keep
+entrance output private unless sharing that door's access is intended.
 
-`list` reads local snapshots without networking. `inspect` reads the live Room's
+`list` reads local snapshots and, when signed in, tries the account World API.
+Local Rooms remain visible if that lookup fails. `inspect` reads the live Room's
 canonical ID (`w_…`), memory state, and available tools. Open and Guide both point
 to Theatre with the public `ro_…` token in the fragment when available; MCP
 retains the owner grant endpoint and must stay private. Never substitute the canonical ID into the fragment.

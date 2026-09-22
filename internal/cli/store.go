@@ -70,6 +70,9 @@ func (c Client) save(path string, g Grant) error {
 }
 
 func (c Client) load(name string) (Grant, error) {
+	if name == "@account" && c.accountGrant != nil {
+		return *c.accountGrant, nil
+	}
 	var g Grant
 	path, err := c.storePath(name)
 	if err != nil {
@@ -84,6 +87,9 @@ func (c Client) load(name string) (Grant, error) {
 		return g, errors.New("grant unavailable; a previous creation may have an unknown outcome — do not blindly recreate")
 	}
 	g.Name = name
+	if g.Kind == "" {
+		g.Kind = "room"
+	}
 	if !roomIDPattern.MatchString(g.RoomID) {
 		g.RoomID = ""
 	}

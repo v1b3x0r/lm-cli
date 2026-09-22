@@ -7,6 +7,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var roomIDPattern = regexp.MustCompile(`^w_[a-f0-9]{32}$`)
@@ -34,6 +35,7 @@ type Lifecycle struct {
 	Note                string  `json:"note"`
 }
 type RoomSummary struct {
+	Space               Space     `json:"space"`
 	Name                string    `json:"name"`
 	Kind                string    `json:"kind"`
 	ExpiresAtAtCreation string    `json:"expiresAtAtCreation"`
@@ -77,6 +79,9 @@ func addresses(endpoint string, publicEndpoint ...string) Addresses {
 }
 
 func summary(g Grant) RoomSummary {
+	if g.Kind == "world" {
+		return RoomSummary{Space: Space{ID: optional(g.RoomID), Name: "World", Type: "world", Access: "owner", Lifecycle: "subscription", State: "unknown", Endpoint: g.URL}, Name: "account", Kind: "world", Saved: true, Next: "lm state --account", Identity: Identity{Alias: "account", Source: "unknown"}, Addresses: Addresses{MCP: g.URL, Access: "authenticated", Warning: "OAuth account access; no shareable door is exposed."}, Lifecycle: Lifecycle{Source: "not_applicable", Note: "World subscription lifecycle is separate from free Room expiry."}}
+	}
 	id := g.RoomID
 	if !roomIDPattern.MatchString(id) {
 		id = ""
@@ -86,7 +91,8 @@ func summary(g Grant) RoomSummary {
 		source = "local_snapshot"
 	}
 	return RoomSummary{
-		Name: g.Name, Kind: g.Kind, ExpiresAtAtCreation: g.ExpiresAt, Saved: true,
+		Space: Space{ID: optional(id), Name: g.Name, Type: "room", Access: addresses(g.URL, g.ReadOnlyURL).Access, Lifecycle: "inactivity_expiry", State: "saved", Endpoint: g.URL},
+		Name:  g.Name, Kind: g.Kind, ExpiresAtAtCreation: g.ExpiresAt, Saved: true,
 		Next:     "lm inspect " + g.Name,
 		Identity: Identity{Alias: g.Name, RoomID: optional(id), Source: source}, Addresses: addresses(g.URL, g.ReadOnlyURL),
 		Lifecycle: Lifecycle{ExpiresAtAtCreation: optional(g.ExpiresAt), Source: "local_snapshot", Note: g.Note},
@@ -98,16 +104,31 @@ func shown(s *string) string {
 	}
 	return *s
 }
-func renderSummary(out io.Writer, s RoomSummary) error {
-	_, err := fmt.Fprintf(out, "%s\n  Room ID  %s (%s)\n  Open     %s\n  Guide    %s\n  MCP      %s\n  Access   %s\n  Expires  %s (at creation; current expiry unknown)\n",
-		terminalText(s.Name), terminalText(shown(s.Identity.RoomID)), s.Identity.Source,
-		terminalText(shown(s.Addresses.Open)), terminalText(shown(s.Addresses.Guide)), terminalText(s.Addresses.MCP),
-		s.Addresses.Access, terminalText(shown(s.Lifecycle.ExpiresAtAtCreation)))
+func renderSummary(out io.Writer, s RoomSummary, inspect bool) error {
+	if s.Kind == "world" {
+		_, err := fmt.Fprintf(out, "%s · World · authenticated\n  World ID  %s\n  MCP       %s\n  Next      %s\n  %s\n", strings.Join(strings.Fields(terminalText(s.Space.Name)), " "), terminalText(shown(s.Identity.RoomID)), terminalText(s.Addresses.MCP), terminalText(s.Next), s.Addresses.Warning)
+		return err
+	}
+	expires := shown(s.Lifecycle.ExpiresAtAtCreation)
+	if !inspect && s.Lifecycle.ExpiresAtAtCreation != nil {
+		if parsed, parseErr := time.Parse(time.RFC3339, expires); parseErr == nil {
+			expires = parsed.Format("2 Jan 2006")
+		}
+	}
+	_, err := fmt.Fprintf(out, "%s · Room · %s\n  Open      %s\n  Guide     %s\n  MCP       %s\n",
+		terminalText(s.Name), s.Addresses.Access,
+		terminalText(shown(s.Addresses.Open)), terminalText(shown(s.Addresses.Guide)), terminalText(s.Addresses.MCP))
+	if err == nil && inspect {
+		_, err = fmt.Fprintf(out, "  Room ID   %s (%s)\n", terminalText(shown(s.Identity.RoomID)), s.Identity.Source)
+	}
+	if err == nil {
+		_, err = fmt.Fprintf(out, "  Expires   %s (at creation; current expiry unknown)\n", terminalText(expires))
+	}
 	if err == nil && s.State != "" {
 		_, err = fmt.Fprintln(out, "  Local status:", s.State)
 	}
 	if err == nil {
-		_, err = fmt.Fprintf(out, "  Next     %s\n  %s\n", terminalText(s.Next), terminalText(s.Addresses.Warning))
+		_, err = fmt.Fprintf(out, "  Next      %s\n  %s\n", terminalText(s.Next), terminalText(s.Addresses.Warning))
 	}
 	return err
 }
@@ -162,6 +183,9 @@ func (c Client) Inspect(g Grant) (Inspection, error) {
 		return out, out.failure()
 	}
 	out.Capabilities = Capabilities{Status: "live", Tools: discovery.Tools}
+	if g.Kind == "world" {
+		out.Space.State = "active"
+	}
 	has := func(tool string) bool {
 		for _, name := range discovery.Tools {
 			if name == tool {
@@ -170,7 +194,7 @@ func (c Client) Inspect(g Grant) (Inspection, error) {
 		}
 		return false
 	}
-	if aliasPattern.MatchString(g.Name) {
+	if g.Kind != "world" && aliasPattern.MatchString(g.Name) {
 		if has("handoff_read") {
 			out.Next = "lm resume " + g.Name
 		} else if has("memory_state") {
@@ -182,25 +206,32 @@ func (c Client) Inspect(g Grant) (Inspection, error) {
 		if callErr == nil {
 			var listing struct {
 				Worlds []struct {
-					ID      string `json:"id"`
-					Default bool   `json:"isDefault"`
+					ID      string  `json:"id"`
+					Title   *string `json:"title"`
+					Default bool    `json:"isDefault"`
 				} `json:"worlds"`
 			}
 			if json.Unmarshal(data, &listing) != nil {
 				callErr = errors.New("invalid identity result")
 			} else {
-				id, defaults := "", 0
+				id, matches := "", 0
+				var title *string
 				for _, world := range listing.Worlds {
-					if world.Default {
+					if (g.Kind == "world" && g.RoomID != "" && world.ID == g.RoomID) || ((g.Kind != "world" || g.RoomID == "") && world.Default) {
 						id = world.ID
-						defaults++
+						title = world.Title
+						matches++
 					}
 				}
-				if defaults != 1 || !roomIDPattern.MatchString(id) {
-					callErr = errors.New("server did not identify one canonical default Room")
+				if matches != 1 || !roomIDPattern.MatchString(id) {
+					callErr = errors.New("server did not identify the selected canonical Space")
 				} else {
 					out.Identity.RoomID = &id
 					out.Identity.Source = "live"
+					out.Space.ID = &id
+					if g.Kind == "world" && title != nil && *title != "" {
+						out.Space.Name = *title
+					}
 				}
 			}
 		}
@@ -209,7 +240,11 @@ func (c Client) Inspect(g Grant) (Inspection, error) {
 		}
 	}
 	if has("memory_state") {
-		data, callErr := c.readTool(g.URL, "memory_state", 103)
+		selectedID := ""
+		if g.Kind == "world" {
+			selectedID = g.RoomID
+		}
+		data, callErr := c.readTool(g.URL, "memory_state", 103, selectedID)
 		if callErr == nil {
 			var snapshot struct {
 				Episodic    *int `json:"episodicCount"`
@@ -231,7 +266,7 @@ func (c Client) Inspect(g Grant) (Inspection, error) {
 	}
 	return out, out.failure()
 }
-func (c Client) readTool(endpoint, tool string, id int) (json.RawMessage, error) {
+func (c Client) readTool(endpoint, tool string, id int, worldID ...string) (json.RawMessage, error) {
 	var result struct {
 		Structured json.RawMessage `json:"structuredContent"`
 		Content    []struct {
@@ -240,7 +275,11 @@ func (c Client) readTool(endpoint, tool string, id int) (json.RawMessage, error)
 		} `json:"content"`
 		IsError bool `json:"isError"`
 	}
-	if err := c.rpc(endpoint, "tools/call", map[string]any{"name": tool, "arguments": map[string]any{}}, id, &result); err != nil {
+	arguments := map[string]any{}
+	if len(worldID) > 0 && worldID[0] != "" {
+		arguments["world_id"] = worldID[0]
+	}
+	if err := c.rpc(endpoint, "tools/call", map[string]any{"name": tool, "arguments": arguments}, id, &result); err != nil {
 		return nil, err
 	}
 	if result.IsError {
@@ -258,7 +297,7 @@ func (c Client) readTool(endpoint, tool string, id int) (json.RawMessage, error)
 	return nil, errors.New("tool did not return structured data")
 }
 func renderInspection(out io.Writer, i Inspection) error {
-	if err := renderSummary(out, i.RoomSummary); err != nil {
+	if err := renderSummary(out, i.RoomSummary, true); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(out, "  Inspection: %s\n  State: %s\n", i.Status, i.State.Status); err != nil {
@@ -266,27 +305,17 @@ func renderInspection(out io.Writer, i Inspection) error {
 	}
 	if i.State.Status == "live" {
 		var snapshot struct {
-			Text        string `json:"text"`
-			Episodic    int    `json:"episodicCount"`
-			Facets      int    `json:"selfFacetCount"`
-			Prospective int    `json:"prospectiveCount"`
+			Episodic    int `json:"episodicCount"`
+			Facets      int `json:"selfFacetCount"`
+			Prospective int `json:"prospectiveCount"`
 		}
 		_ = json.Unmarshal(i.State.Data, &snapshot)
-		text := snapshot.Text
-		if text == "" {
-			text = fmt.Sprintf("episodic: %d · selfFacets: %d · prospective: %d", snapshot.Episodic, snapshot.Facets, snapshot.Prospective)
-		}
-		if _, err := fmt.Fprintln(out, "    "+terminalText(text)); err != nil {
+		if _, err := fmt.Fprintf(out, "    %d memories · %d facets · %d pending\n", snapshot.Episodic, snapshot.Facets, snapshot.Prospective); err != nil {
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(out, "  Available tools (%s):\n", i.Capabilities.Status); err != nil {
+	if _, err := fmt.Fprintf(out, "  Tools     %d available (%s); use --json for names\n", len(i.Tools), i.Capabilities.Status); err != nil {
 		return err
-	}
-	for _, tool := range i.Tools {
-		if _, err := fmt.Fprintln(out, "    "+terminalText(tool)); err != nil {
-			return err
-		}
 	}
 	for _, issue := range i.Errors {
 		if _, err := fmt.Fprintf(out, "  Failed %s: %s\n", issue.Stage, terminalText(issue.Message)); err != nil {

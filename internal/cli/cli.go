@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var version = "0.1.0-rc.3"
+var version = "0.1.0-rc.4-dev"
 
 const maxResponse = 2 << 20
 
@@ -30,9 +30,12 @@ type Grant struct {
 }
 
 type Client struct {
-	HTTP *http.Client
-	Base string
-	Home string
+	HTTP         *http.Client
+	Base         string
+	Home         string
+	accountGrant *Grant
+	openBrowser  func(string)
+	loginTimeout time.Duration
 }
 
 func newClient() Client {
@@ -55,10 +58,19 @@ func (c Client) post(address string, body []byte) ([]byte, error) {
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	res, err := c.HTTP.Do(req)
 	if err != nil {
+		if c.accountGrant != nil {
+			return nil, errors.New("account request or refresh failed; run lm login to reconnect. Outcome unknown, no automatic retry")
+		}
 		return nil, errors.New("request failed or timed out; outcome unknown, no automatic retry")
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		if c.accountGrant != nil && res.StatusCode == 401 {
+			return nil, errors.New("account authorization rejected; run lm login. Operation was not retried")
+		}
+		if c.accountGrant != nil && res.StatusCode == 403 {
+			return nil, errors.New("World access denied; run lm world to check the account subscription. Operation was not retried")
+		}
 		data, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 		var problem struct {
 			Code string `json:"code"`
@@ -199,9 +211,12 @@ func (c Client) Discover(g Grant) (Discovery, error) {
 
 const help = `lm — Living Memory from your terminal
 
+  lm login [--json]               Sign in through browser OAuth
+  lm logout                       Remove local account credentials
+  lm inspect --account [--json]    Inspect your default World (RC3 compatibility)
   lm create <name> --room [--json]  Create and privately save a free Room
-  lm list [--json]                 Show local Room identities and saved snapshots
-  lm inspect [name] [--json]       Inspect identity, lifecycle, state and tools; or read grant stdin
+  lm list [--json]                 Show local Rooms and signed-in Worlds
+  lm inspect [selector] [--json]   Inspect a Space; or read a Room grant from stdin
   lm remember <name> [--json]      Store memory text from stdin
   lm recall <name> [--json]        Search using query text from stdin
   lm handoff <name> [--json]       Save a temporary note from stdin
@@ -209,14 +224,15 @@ const help = `lm — Living Memory from your terminal
   lm state <name> [--json]         Read memory counts and recent memories
   lm export <name> --json          Export secret grant for another client/machine
   lm import <name> [--json]        Privately save a grant from stdin
-  lm world [--json]                Continue to the existing World purchase flow
+  lm world [--json]                See the plan or activate an entitled World
   lm version
 
-Names are local aliases. Credentials stay in the user config directory (LM_HOME
-can override it). create/list/inspect show full door links; holders gain that
-door's access. list is local; inspect contacts the Room. Reading a Room may
-extend its inactivity expiry. World purchase
-does not automatically migrate a Room. No CLI login or World approval yet.
+Names select a Space when unique. Use room:<alias> or world:<id> to resolve a
+collision. Room grants and account credentials stay private (LM_HOME can override
+the config directory). list hides door links and still shows local Rooms if the
+World lookup fails. inspect shows exact entrances; a Room read may extend its
+inactivity expiry. World purchase does not migrate a Room. Run lm world again
+after checkout to activate access from this CLI.
 `
 
 func Run(args []string, in io.Reader, out, stderr io.Writer) int {
@@ -234,11 +250,14 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 	}
 	asJSON := false
 	room := false
+	useAccount := false
 	var positional []string
 	for _, arg := range args[1:] {
 		switch arg {
 		case "--json":
 			asJSON = true
+		case "--account":
+			useAccount = true
 		case "--room":
 			room = true
 		default:
@@ -247,6 +266,76 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 			}
 			positional = append(positional, arg)
 		}
+	}
+	if args[0] == "login" || args[0] == "logout" {
+		if len(positional) != 0 || room || useAccount || (args[0] == "logout" && asJSON) {
+			return fail(errors.New("usage: lm login [--json] | lm logout"))
+		}
+		if args[0] == "login" {
+			if err := c.login(out, stderr, asJSON); err != nil {
+				return fail(err)
+			}
+			return 0
+		}
+		unlock, err := c.lockAccount()
+		if err != nil {
+			return fail(err)
+		}
+		defer unlock()
+		path, err := c.accountPath()
+		if err != nil {
+			return fail(err)
+		}
+		if err = os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fail(errors.New("cannot remove local account"))
+		}
+		fmt.Fprintln(out, "Local account removed. Provider authorization is not revoked; revoke it in your account settings if needed.")
+		return 0
+	}
+	selectedWorldID := ""
+	if !useAccount && spaceCommand(args[0]) && len(positional) == 1 {
+		alias, id, world, err := c.resolveSelector(positional[0])
+		if err != nil {
+			return fail(err)
+		}
+		if world {
+			useAccount, selectedWorldID, positional = true, id, nil
+		} else {
+			positional[0] = alias
+		}
+	}
+	if useAccount {
+		allowed := map[string]bool{"inspect": true, "remember": true, "recall": true, "handoff": true, "resume": true, "state": true}
+		if !allowed[args[0]] || room || len(positional) != 0 {
+			return fail(errors.New("--account replaces the Room name for inspect/remember/recall/handoff/resume/state only"))
+		}
+		unlock, err := c.lockAccount()
+		if err != nil {
+			return fail(err)
+		}
+		defer unlock()
+		a, err := c.readAccount()
+		if err != nil {
+			return fail(err)
+		}
+		c = c.withAccount(&a)
+		if selectedWorldID != "" {
+			inv, e := c.fetchSpaces(&a)
+			if e != nil {
+				return fail(e)
+			}
+			found := false
+			for _, s := range inv.Spaces {
+				if shown(s.ID) == selectedWorldID {
+					found = true
+				}
+			}
+			if !found {
+				return fail(errors.New("World is not accessible from this account"))
+			}
+		}
+		c.accountGrant = &Grant{Name: "account", Kind: "world", RoomID: selectedWorldID, URL: accountResource}
+		positional = []string{"@account"}
 	}
 	switch args[0] {
 	case "create":
@@ -267,7 +356,7 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 		if asJSON {
 			err = json.NewEncoder(out).Encode(summary(g))
 		} else {
-			err = renderSummary(out, summary(g))
+			err = renderSummary(out, summary(g), false)
 		}
 		if err != nil {
 			return fail(errors.New("room created but output failed; do not blindly retry"))
@@ -293,7 +382,7 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 		if len(positional) == 0 {
 			info.Saved = false
 		}
-		if len(positional) == 1 && info.Identity.Source == "live" && info.Identity.RoomID != nil && *info.Identity.RoomID != g.RoomID {
+		if !useAccount && len(positional) == 1 && info.Identity.Source == "live" && info.Identity.RoomID != nil && *info.Identity.RoomID != g.RoomID {
 			g.RoomID = *info.Identity.RoomID
 			g.Warning = addresses(g.URL, g.ReadOnlyURL).Warning
 			path, saveErr := c.storePath(g.Name)
