@@ -3,6 +3,8 @@
 set -eu
 main() {
 VERSION=0.1.0-rc.3
+# RC3 was published with this tag; asset names and binary version use VERSION.
+RELEASE_TAG=v0.1.0-rc-3
 fail() { printf 'lm install: %s\n' "$*" >&2; exit 1; }
 for tool in curl tar awk mktemp install cmp; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command missing: $tool"
@@ -33,7 +35,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/lm-install.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 trap 'exit 1' HUP INT TERM
 archive=lm-cli_${VERSION}_${platform}_${arch}.tar.gz
-base=https://github.com/v1b3x0r/lm-cli/releases/download/v${VERSION}
+base=https://github.com/v1b3x0r/lm-cli/releases/download/${RELEASE_TAG}
 printf 'Downloading lm %s for %s/%s…\n' "$VERSION" "$platform" "$arch"
 curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 15 --max-time 180 "$base/$archive" -o "$work/$archive"
 curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 15 --max-time 60 "$base/SHA256SUMS" -o "$work/SHA256SUMS"
