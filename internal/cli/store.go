@@ -87,6 +87,6 @@ func (c Client) load(name string) (Grant, error) {
 	if !roomIDPattern.MatchString(g.RoomID) {
 		g.RoomID = ""
 	}
-	g.Warning = addresses(g.URL).Warning
+	g.Warning = addresses(g.URL, g.ReadOnlyURL).Warning
 	return g, nil
 }

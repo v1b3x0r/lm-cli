@@ -2,7 +2,7 @@
 """Exercise installer failure boundaries without touching the owner's shell config."""
 import hashlib, io, os, pathlib, subprocess, tarfile, tempfile, unittest
 SCRIPT = pathlib.Path(__file__).with_name('install.sh').resolve()
-VERSION = '0.1.0-rc.2'
+VERSION = '0.1.0-rc.3'
 class Installer(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='lm-installer-test-')
@@ -22,7 +22,7 @@ cp "$FIXTURES/${url##*/}" "$dest"
 ''')
         for system, arch in [('darwin','arm64'), ('darwin','amd64'), ('linux','arm64'), ('linux','amd64')]:
             name=f'lm-cli_{VERSION}_{system}_{arch}.tar.gz'
-            data=b'#!/bin/sh\necho 0.1.0-rc.2\n'
+            data=b'#!/bin/sh\necho 0.1.0-rc.3\n'
             with tarfile.open(self.base/name,'w:gz') as tf:
                 info=tarfile.TarInfo('lm'); info.mode=0o755; info.size=len(data)
                 tf.addfile(info, io.BytesIO(data))

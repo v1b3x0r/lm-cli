@@ -12,10 +12,10 @@ lm create my-room --room
 step. Use `lm list` to find Room names saved on this machine.
 
 The source build shows Room ID, Open/Guide, MCP, and creation-time expiry.
-Open and Guide are the same browser entrance. These links carry the door's
-access: keep them private unless you intend to share that access. The currently
-published 0.1.0-rc.1 has the earlier, smaller output; see the README for building
-this checkout.
+New Rooms created against a backend supporting `readOnlyUrl` have a public
+read-only Open/Guide entrance. Keep the owner's MCP URL private. Older grants
+without this field show no public entrance; rebuilding the CLI alone cannot
+add a server-issued read-only door.
 
 ```sh
 lm inspect my-room
@@ -72,3 +72,20 @@ exits nonzero; a network error does not mean the Room disappeared.
 After automatic installation, open a new Terminal tab. If you downloaded the
 binary manually, use `./lm` while inside its extracted folder, or use the
 [installer](install.md) to set up the `lm` command.
+
+## Chapters for an Astro series
+
+```sh
+lm create ride-morning --room
+lm create ride-evening --room
+# Later, in another terminal:
+lm inspect ride-morning
+lm inspect ride-evening
+```
+
+Connect your recording client using each private MCP URL. Copy only each
+Open/Guide URL into the corresponding Astro chapter link. Open/Guide uses the
+read-only door; visitors open Theatre and press Enter without account login.
+Do not publish full CLI output or grant exports: these also contain the write
+credential. This source change still requires backend deployment and binary
+installation before the new-room flow is available in production.

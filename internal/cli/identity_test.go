@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -16,7 +17,7 @@ const testToken = "ons_abcdef0123456789abcdef0123456789"
 
 func TestAddressesRespectDoorAndOrigin(t *testing.T) {
 	for _, tc := range []struct{ endpoint, access, fragment string }{
-		{"https://lme.viibe.to/t/" + testToken + "/mcp", "read_write", testToken},
+		{"https://lme.viibe.to/t/" + testToken + "/mcp", "read_write", ""},
 		{"https://lme.viibe.to/t/ro_abcdef0123456789abcdef0123456789/mcp/", "read_only", "ro_abcdef0123456789abcdef0123456789"},
 		{"https://other.example/t/" + testToken + "/mcp", "unknown", ""},
 		{"https://lme.viibe.to/t/" + testRoomID + "/mcp", "unknown", ""},
@@ -309,4 +310,55 @@ func TestInspectionDoesNotTreatInvalidDataAsLive(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPublicEntrancesSurviveCreateAndOfflineInspect(t *testing.T) {
+	owner := "https://lme.viibe.to/t/" + testToken + "/mcp"
+	public := "https://lme.viibe.to/t/ro_0123456789abcdef0123456789abcdef/mcp"
+	guide := "https://living-memory.app/theatre#ro_0123456789abcdef0123456789abcdef"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ons/new" {
+			json.NewEncoder(w).Encode(Grant{URL: owner, ReadOnlyURL: public, RoomID: testRoomID, ExpiresAt: "2026-10-12T00:00:00Z"})
+			return
+		}
+		w.WriteHeader(502)
+	}))
+	defer server.Close()
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "private")
+	c.Base = server.URL
+	for _, alias := range []string{"chapter-one", "chapter-two"} {
+		args := []string{"create", alias, "--room"}
+		if alias == "chapter-two" {
+			args = append(args, "--json")
+		}
+		code, out, stderr := invokeTest(c, "", args...)
+		if code != 0 || !strings.Contains(out, guide) {
+			t.Fatal(code, out, stderr)
+		}
+		g, err := c.load(alias)
+		if err != nil || g.ReadOnlyURL != public || g.RoomID != testRoomID {
+			t.Fatal(g, err)
+		}
+		// Route only the transport to the failure fixture; preserve the canonical grant.
+		c.HTTP = &http.Client{Transport: failureTransport{}}
+		for _, args := range [][]string{{"inspect", alias}, {"inspect", alias, "--json"}} {
+			code, out, stderr = invokeTest(c, "", args...)
+			if code == 0 || !strings.Contains(out, guide) || !strings.Contains(out, testRoomID) || strings.Contains(stderr, testToken) {
+				t.Fatal(code, out, stderr)
+			}
+		}
+		c.HTTP = server.Client()
+	}
+	for _, invalid := range []string{owner, "https://other.example/t/ro_0123456789abcdef0123456789abcdef/mcp", ""} {
+		if a := addresses(owner, invalid); a.Open != nil || a.Guide != nil {
+			t.Fatal("unsafe public fallback", a)
+		}
+	}
+}
+
+type failureTransport struct{}
+
+func (failureTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: 502, Body: io.NopCloser(strings.NewReader("unavailable")), Header: make(http.Header)}, nil
 }

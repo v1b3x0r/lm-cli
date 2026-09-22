@@ -16,9 +16,10 @@ macOS or Linux:
 curl -fsSL https://living-memory-cli.pages.dev/install.sh | sh
 ```
 
-Open a new Terminal tab and run `lm version`. The installer currently distributes
-[0.1.0-rc.2](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.2).
-The identity output described below is in source and has not been released yet.
+Open a new Terminal tab and run `lm version`. The installer in this checkout targets
+[0.1.0-rc.3](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.3).
+Publish the RC3 release assets and deploy the matching backend before using the
+public read-only entrances described below.
 To try this checkout, with Go installed:
 
 ```sh
@@ -62,7 +63,7 @@ Agent A enters Room -> leaves context -> process/model/machine changes
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `my-project`    | A local alias on this machine. Another machine can use a different alias.                                                        |
 | Room ID (`w_…`) | The canonical resource identity supplied by the server. It is not a door credential.                                             |
-| Open / Guide    | The same Theatre entrance, with the actual `ons_…` or `ro_…` door token after `#`. Open it, then use the Theatre's Enter action. |
+| Open / Guide    | The same Theatre entrance, with the public read-only `ro_…` door token after `#`. Open it, then use the Theatre's Enter action. |
 | MCP             | The agent endpoint from the saved grant.                                                                                         |
 | Expires         | The expiry recorded at creation. It is a snapshot, not the current server expiry.                                                |
 
@@ -70,11 +71,11 @@ Agent A enters Room -> leaves context -> process/model/machine changes
 requests. `lm inspect my-project` looks through that door to read the current
 identity, memory state, and available tools.
 
-Open, Guide, and MCP are shown in full. Open and Guide share one address; neither
-creates another Room. The Theatre link and MCP endpoint contain the same door
-credential. A read-only (`ro_`) door stays read-only; an `ons_` door allows reads
-and writes through MCP; the Theatre visit itself only reads. Unsupported/custom endpoints keep their MCP address but have no
-invented Theatre link or claimed access level.
+Open and Guide share one read-only Theatre address for publication. MCP is the
+owner's write-capable endpoint: keep it private. Both doors reach the same Room.
+Older grants without a read-only door show no public entrance; the CLI never
+substitutes the owner's write door. Unsupported/custom endpoints keep their MCP
+address but have no invented Theatre link or claimed access level.
 
 Older grants may initially show an unknown Room ID. Inspect learns and caches
 it when the server offers `world_list`. Create receives it directly from servers
@@ -207,7 +208,7 @@ agent directory followed by resume. The purchase entry returned HTTP 200; no
 purchase or authenticated checkout was performed. These are prior release
 checks, not evidence that the identity changes have been deployed.
 
-Run `python3 scripts/package.py 0.1.0-rc.2` to build macOS/Linux bundles with
+Run `python3 scripts/package.py 0.1.0-rc.3` to build macOS/Linux bundles with
 checksums and the agent quickstart. Publishing remains a separate step after
 verification. World administration, step-up authentication, watch, and UI are
 outside this slice.

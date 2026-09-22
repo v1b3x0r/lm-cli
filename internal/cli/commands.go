@@ -97,7 +97,7 @@ func (c Client) extra(command string, args []string, room, asJSON bool, in io.Re
 		}
 		g.Name = args[0]
 		g.Kind = "room"
-		g.Warning = addresses(g.URL).Warning
+		g.Warning = addresses(g.URL, g.ReadOnlyURL).Warning
 		if !roomIDPattern.MatchString(g.RoomID) {
 			g.RoomID = ""
 		}

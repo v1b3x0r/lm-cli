@@ -3,7 +3,7 @@
 Use `lm` to keep project context across processes and transfer work between
 agents. Start with a free Room when a temporary shared space is sufficient.
 Use only the official binary/source given by the owner; see `INSTALL.md` in a
-release bundle. Download the preview from https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.2.
+release bundle. Download the preview from https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.3.
 
 ## Start once
 
@@ -21,8 +21,8 @@ those outputs private unless sharing that door's access is intended.
 
 `list` reads local snapshots without networking. `inspect` reads the live Room's
 canonical ID (`w_…`), memory state, and available tools. Open and Guide both point
-to Theatre with the actual `ons_…`/`ro_…` token in the fragment; MCP is the same
-door's agent endpoint. Never substitute the canonical ID into the fragment.
+to Theatre with the public `ro_…` token in the fragment when available; MCP
+retains the owner grant endpoint and must stay private. Never substitute the canonical ID into the fragment.
 Older grants learn/cache their ID through inspect when `world_list` is offered.
 Creation-time expiry is a snapshot; current expiry is unknown.
 

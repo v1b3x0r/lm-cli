@@ -14,18 +14,19 @@ import (
 	"time"
 )
 
-var version = "0.1.0-rc.2"
+var version = "0.1.0-rc.3"
 
 const maxResponse = 2 << 20
 
 type Grant struct {
-	Name      string `json:"name"`
-	RoomID    string `json:"roomId,omitempty"`
-	Kind      string `json:"kind"`
-	URL       string `json:"url"`
-	ExpiresAt string `json:"expiresAt"`
-	Note      string `json:"note,omitempty"`
-	Warning   string `json:"warning"`
+	Name        string `json:"name"`
+	RoomID      string `json:"roomId,omitempty"`
+	Kind        string `json:"kind"`
+	URL         string `json:"url"`
+	ReadOnlyURL string `json:"readOnlyUrl,omitempty"`
+	ExpiresAt   string `json:"expiresAt"`
+	Note        string `json:"note,omitempty"`
+	Warning     string `json:"warning"`
 }
 
 type Client struct {
@@ -97,7 +98,7 @@ func (c Client) Create(name string) (Grant, error) {
 	}
 	g.Name = name
 	g.Kind = "room"
-	g.Warning = addresses(g.URL).Warning
+	g.Warning = addresses(g.URL, g.ReadOnlyURL).Warning
 	if !roomIDPattern.MatchString(g.RoomID) {
 		g.RoomID = ""
 	}
@@ -294,7 +295,7 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 		}
 		if len(positional) == 1 && info.Identity.Source == "live" && info.Identity.RoomID != nil && *info.Identity.RoomID != g.RoomID {
 			g.RoomID = *info.Identity.RoomID
-			g.Warning = addresses(g.URL).Warning
+			g.Warning = addresses(g.URL, g.ReadOnlyURL).Warning
 			path, saveErr := c.storePath(g.Name)
 			if saveErr == nil {
 				saveErr = c.save(path, g)

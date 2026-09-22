@@ -51,22 +51,31 @@ func optional(s string) *string {
 	}
 	return &s
 }
-func addresses(endpoint string) Addresses {
-	a := Addresses{MCP: endpoint, Access: "unknown", Warning: "Endpoint access is unknown; keep any credentials in this URL private."}
+func addresses(endpoint string, publicEndpoint ...string) Addresses {
+	a := Addresses{MCP: endpoint, Access: "unknown", Warning: "Endpoint access is unknown; public read-only entrance unavailable. Keep MCP credentials private."}
 	match := theatreDoorPattern.FindStringSubmatch(endpoint)
 	if match == nil {
 		return a
 	}
-	link := "https://living-memory.app/theatre#" + match[1]
-	a.Open, a.Guide = &link, &link
 	a.Access = "read_write"
-	a.Warning = "Open/Guide and MCP contain the same write-capable door credential. Anyone holding either link can read and write this Room through MCP; Theatre visits only read."
+	a.Warning = "Public read-only entrance unavailable for this grant. MCP is write-capable; keep it private."
+	public := ""
 	if match[2] == "ro" {
 		a.Access = "read_only"
-		a.Warning = "Open/Guide and MCP contain the same read-only door credential. Anyone holding either link can read this Room."
+		public = endpoint
+	} else if len(publicEndpoint) > 0 {
+		public = publicEndpoint[0]
 	}
+	door := theatreDoorPattern.FindStringSubmatch(public)
+	if door == nil || door[2] != "ro" {
+		return a
+	}
+	link := "https://living-memory.app/theatre#" + door[1]
+	a.Open, a.Guide = &link, &link
+	a.Warning = "Open/Guide grant read-only access and can be shared. MCP retains the access shown above; keep a write-capable MCP URL private."
 	return a
 }
+
 func summary(g Grant) RoomSummary {
 	id := g.RoomID
 	if !roomIDPattern.MatchString(id) {
@@ -79,7 +88,7 @@ func summary(g Grant) RoomSummary {
 	return RoomSummary{
 		Name: g.Name, Kind: g.Kind, ExpiresAtAtCreation: g.ExpiresAt, Saved: true,
 		Next:     "lm inspect " + g.Name,
-		Identity: Identity{Alias: g.Name, RoomID: optional(id), Source: source}, Addresses: addresses(g.URL),
+		Identity: Identity{Alias: g.Name, RoomID: optional(id), Source: source}, Addresses: addresses(g.URL, g.ReadOnlyURL),
 		Lifecycle: Lifecycle{ExpiresAtAtCreation: optional(g.ExpiresAt), Source: "local_snapshot", Note: g.Note},
 	}
 }
