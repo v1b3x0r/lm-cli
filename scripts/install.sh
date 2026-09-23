@@ -5,7 +5,7 @@ main() {
 VERSION=0.1.0-rc.4
 RELEASE_TAG=v0.1.0-rc.4
 fail() { printf 'lm install: %s\n' "$*" >&2; exit 1; }
-for tool in curl tar awk mktemp install cmp mv; do
+for tool in curl tar awk mktemp install cmp mv readlink; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command missing: $tool"
 done
 case "$(uname -s)" in Darwin) platform=darwin ;; Linux) platform=linux ;; *) fail 'Supported systems: macOS and Linux.' ;; esac
@@ -57,15 +57,32 @@ install_lock=$bindir/.lm-install.lock
 lock_owned=0
 stage=
 backup_dir=
+restore_displaced() {
+  [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ] || return 1
+  [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || return 1
+  if [ -L "$backup_dir/lm" ]; then
+    target=$(readlink "$backup_dir/lm") || return 1
+    ln -s "$target" "$bindir/lm" 2>/dev/null || return 1
+    [ -L "$bindir/lm" ] && [ "$(readlink "$bindir/lm")" = "$target" ] || return 1
+    rm -f "$backup_dir/lm"
+    rmdir "$backup_dir"
+  elif [ -f "$backup_dir/lm" ]; then
+    ln "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
+    [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && cmp -s "$backup_dir/lm" "$bindir/lm" || return 1
+    rm -f "$backup_dir/lm"
+    rmdir "$backup_dir"
+  elif [ -d "$backup_dir/lm" ]; then
+    # A directory cannot be hard-linked; keep it at the backup path.
+    ln -s "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
+    [ -L "$bindir/lm" ] && [ "$(readlink "$bindir/lm")" = "$backup_dir/lm" ] || return 1
+  else
+    return 1
+  fi
+}
 cleanup() {
   # A signal may arrive after the old entry moves but before RC4 is linked.
   if [ -n "$backup_dir" ] && { [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; }; then
-    if [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ]; then
-      if ln -P "$backup_dir/lm" "$bindir/lm" 2>/dev/null; then
-        rm -f "$backup_dir/lm"
-        rmdir "$backup_dir"
-      fi
-    fi
+    restore_displaced || true
   fi
   [ -z "$stage" ] || rm -f "$stage"
   [ "$lock_owned" -eq 0 ] || rmdir "$install_lock" 2>/dev/null || true
@@ -115,12 +132,8 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
     backup_dir=$(mktemp -d "$bindir/.lm-previous.XXXXXX")
     restore_or_preserve() {
       rm -f "$stage"
-      if { [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; } &&
-         [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ] &&
-         ln -P "$backup_dir/lm" "$bindir/lm" 2>/dev/null; then
-        rm -f "$backup_dir/lm"
-        rmdir "$backup_dir"
-        fail "$1 Previous executable restored."
+      if restore_displaced; then
+        fail "$1 Previous entry restored."
       fi
       fail "$1 Displaced executable preserved at $backup_dir/lm."
     }
