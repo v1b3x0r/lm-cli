@@ -81,12 +81,36 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
     [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] &&
       [ "$(file_hash "$bindir/lm")" = "$previous_hash" ] || fail 'Existing lm changed during installation. Nothing overwritten.'
     stage=$(mktemp "$bindir/.lm-install.XXXXXX")
-    if install -m 755 "$work/lm" "$stage" && mv -f "$stage" "$bindir/lm"; then
-      printf 'Upgraded lm from %s to %s.\n' "$previous" "$VERSION"
-    else
+    install -m 755 "$work/lm" "$stage" || { rm -f "$stage"; fail 'Could not stage lm upgrade.'; }
+    backup_dir=$(mktemp -d "$bindir/.lm-previous.XXXXXX")
+    restore_or_preserve() {
       rm -f "$stage"
-      fail 'Could not upgrade lm. The existing executable was left in place.'
+      if [ -f "$backup_dir/lm" ] && [ ! -L "$backup_dir/lm" ] &&
+         [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ] &&
+         ln "$backup_dir/lm" "$bindir/lm" 2>/dev/null; then
+        rm -f "$backup_dir/lm"
+        rmdir "$backup_dir"
+        fail "$1 Previous executable restored."
+      fi
+      fail "$1 Displaced executable preserved at $backup_dir/lm."
+    }
+    # Move first, then verify the displaced entry; never overwrite a new arrival.
+    if ! mv "$bindir/lm" "$backup_dir/lm"; then
+      if [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; then
+        restore_or_preserve 'Could not move existing lm.'
+      fi
+      rm -f "$stage"
+      rmdir "$backup_dir"
+      fail 'Could not move existing lm. Nothing overwritten.'
     fi
+    [ -f "$backup_dir/lm" ] && [ ! -L "$backup_dir/lm" ] &&
+      [ "$(file_hash "$backup_dir/lm")" = "$previous_hash" ] || restore_or_preserve 'Existing lm changed during installation.'
+    ln "$stage" "$bindir/lm" || restore_or_preserve 'Another executable appeared during installation.'
+    rm -f "$stage"
+    cmp -s "$work/lm" "$bindir/lm" || fail "Installed path changed; previous executable preserved at $backup_dir/lm."
+    rm -f "$backup_dir/lm"
+    rmdir "$backup_dir"
+    printf 'Upgraded lm from %s to %s.\n' "$previous" "$VERSION"
   fi
 else
   # A hard link publishes a complete file and refuses a concurrent overwrite.

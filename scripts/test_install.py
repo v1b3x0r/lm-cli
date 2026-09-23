@@ -46,6 +46,17 @@ cp "$FIXTURES/${url##*/}" "$dest"
         p=subprocess.run(['/bin/sh',str(SCRIPT)],env=self.env,text=True,capture_output=True)
         self.assertEqual(p.returncode==0,success,p.stdout+p.stderr)
         return p
+    def trust_fixture_as_rc3(self,p):
+        (self.base/'old-lm').write_bytes(p.read_bytes())
+        real_shasum=shutil.which('shasum')
+        if not real_shasum: self.skipTest('shasum is unavailable')
+        self.tool('shasum',f'''#!/bin/sh
+if cmp -s "$3" "$FIXTURES/old-lm"; then
+  printf '%s  %s\\n' '003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b' "$3"
+else
+  exec {shlex.quote(real_shasum)} "$@"
+fi
+''')
     def test_install_repeat_and_new_zsh(self):
         self.run_install(); self.run_install()
         profile=self.root/'.zshrc'
@@ -68,19 +79,36 @@ cp "$FIXTURES/${url##*/}" "$dest"
     def test_upgrade_known_rc3_binary(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
-        real_shasum=shutil.which('shasum')
-        if not real_shasum: self.skipTest('shasum is unavailable')
-        self.tool('shasum',f'''#!/bin/sh
-if [ "$3" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
-  printf '%s  %s\\n' '003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b' "$3"
-else
-  exec {shlex.quote(real_shasum)} "$@"
-fi
-''')
+        self.trust_fixture_as_rc3(p)
         result=self.run_install()
         self.assertIn(f'Upgraded lm from 0.1.0-rc.3 to {VERSION}', result.stdout)
         self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
         self.assertEqual(list(p.parent.glob('.lm-install.*')),[])
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_changed_entry_before_move_is_restored(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then printf 'concurrent\\n' > "$1"; fi
+exec /bin/mv "$@"
+''')
+        self.run_install(False)
+        self.assertEqual(p.read_text(),'concurrent\n')
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_new_entry_after_move_is_not_overwritten(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        old=b'#!/bin/sh\necho 0.1.0-rc.3\n'; p.write_bytes(old); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then printf 'concurrent\\n' > "$2"; fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        self.assertEqual(p.read_text(),'concurrent\n')
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_bytes(),old)
     def test_version_spoof_is_not_executed_or_overwritten(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         data=b'#!/bin/sh\ntouch "$FIXTURES/executed"\necho 0.1.0-rc.3\n'
