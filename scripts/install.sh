@@ -41,8 +41,11 @@ curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 15 --max-time 60 "$base/
 expected=$(awk -v name="$archive" '$2 == name { print $1; n++ } END { if (n != 1) exit 1 }' "$work/SHA256SUMS") || fail 'Release checksum entry missing or duplicated.'
 [ "${#expected}" -eq 64 ] || fail 'Invalid release checksum.'
 case "$expected" in *[!0-9a-f]*) fail 'Invalid release checksum.' ;; esac
-if [ "$hash_tool" = shasum ]; then actual=$(shasum -a 256 "$work/$archive" | awk '{print $1}')
-else actual=$(sha256sum "$work/$archive" | awk '{print $1}'); fi
+file_hash() {
+  if [ "$hash_tool" = shasum ]; then shasum -a 256 "$1" | awk '{print $1}'
+  else sha256sum "$1" | awk '{print $1}'; fi
+}
+actual=$(file_hash "$work/$archive")
 [ "$actual" = "$expected" ] || fail 'Checksum did not match. Nothing installed.'
 # Extract only the executable, never documentation or arbitrary archive paths.
 tar -xzf "$work/$archive" -C "$work" lm
@@ -54,9 +57,21 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
   if cmp -s "$work/lm" "$bindir/lm"; then
     printf 'lm %s is already installed.\n' "$VERSION"
   else
-    previous=$("$bindir/lm" version 2>/dev/null || true)
-    case "$previous" in
-      0.1.0-rc.1|0.1.0-rc.2|0.1.0-rc.3) ;;
+    previous_hash=$(file_hash "$bindir/lm")
+    # Hashes of the extracted official release binaries, grouped by version.
+    case "$platform/$arch:$previous_hash" in
+      darwin/amd64:5f4edb126971308fd3bd84c685c9db35ea7c1c6ce96ac2ae1cbc5a96482b3a69|\
+      darwin/arm64:5d9c3260bc7bc2ffcf0555c5f5e83e9488398d3a9fadbf0bf115afc74a6ff720|\
+      linux/amd64:fe06daf508ef6939e664f37efb4b34aa840eaf7f79b23236ad44fa7a3e521012|\
+      linux/arm64:5bad3ef05963128724efa40c1b91cb00430f06b978ce43059812186633459f7d) previous=0.1.0-rc.1 ;;
+      darwin/amd64:8c610c8dccccfd4b41bcd0e59f1d86df480b246a15b6feee00fe8fa7411665d2|\
+      darwin/arm64:94f65d7bd017d34730742bcbcc0bb3dbdeafb4ef9261b62aa183fcff20bf5848|\
+      linux/amd64:fa7ebdc97b98c6866006565402ac27172a98e446c869ccdd0208a3af5354d924|\
+      linux/arm64:10aa94b20d6fb626c84f71f77f0010ecc6362760bbe9dfcc1606ff68b075a40f) previous=0.1.0-rc.2 ;;
+      darwin/amd64:305b20ec7bbee5e69318f34b933a9ee83cf7b1b9751ffbc16ecbb149948219f5|\
+      darwin/arm64:003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b|\
+      linux/amd64:7ce80da1c04283ba5ec1641df0a4684175190421855feef3ff77cc92e855c40d|\
+      linux/arm64:35908c5e6640a0cc6d726b023e527df7d5ff56390aff01572390deadfddb43ac) previous=0.1.0-rc.3 ;;
       *) fail "An unrecognized lm exists at $bindir/lm. Nothing overwritten." ;;
     esac
     stage=$(mktemp "$bindir/.lm-install.XXXXXX")

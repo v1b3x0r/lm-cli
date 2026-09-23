@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise installer failure boundaries without touching the owner's shell config."""
-import hashlib, io, os, pathlib, subprocess, tarfile, tempfile, unittest
+import hashlib, io, os, pathlib, shlex, shutil, subprocess, tarfile, tempfile, unittest
 SCRIPT = pathlib.Path(__file__).with_name('install.sh').resolve()
 VERSION = '0.1.0-rc.4'
 RELEASE_TAG = 'v0.1.0-rc.4'
@@ -68,10 +68,26 @@ cp "$FIXTURES/${url##*/}" "$dest"
     def test_upgrade_known_rc3_binary(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        real_shasum=shutil.which('shasum')
+        if not real_shasum: self.skipTest('shasum is unavailable')
+        self.tool('shasum',f'''#!/bin/sh
+if [ "$3" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  printf '%s  %s\\n' '003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b' "$3"
+else
+  exec {shlex.quote(real_shasum)} "$@"
+fi
+''')
         result=self.run_install()
         self.assertIn(f'Upgraded lm from 0.1.0-rc.3 to {VERSION}', result.stdout)
         self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
         self.assertEqual(list(p.parent.glob('.lm-install.*')),[])
+    def test_version_spoof_is_not_executed_or_overwritten(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        data=b'#!/bin/sh\ntouch "$FIXTURES/executed"\necho 0.1.0-rc.3\n'
+        p.write_bytes(data); p.chmod(0o755)
+        self.run_install(False)
+        self.assertEqual(p.read_bytes(),data)
+        self.assertFalse((self.base/'executed').exists())
     def test_other_lm_on_path(self):
         self.tool('lm','#!/bin/sh\nexit 0\n'); self.run_install(False)
         self.assertFalse(self.root.exists())
