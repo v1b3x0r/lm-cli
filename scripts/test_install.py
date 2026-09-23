@@ -78,18 +78,39 @@ fi
         self.assertFalse((self.root/'.zshrc').exists())
     def test_upgrade_known_rc3_binary(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
-        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        old=b'#!/bin/sh\necho 0.1.0-rc.3\n'
+        p.write_bytes(old); p.chmod(0o755)
         self.trust_fixture_as_rc3(p)
         result=self.run_install()
         self.assertIn(f'Upgraded lm from 0.1.0-rc.3 to {VERSION}', result.stdout)
         self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
         self.assertEqual(list(p.parent.glob('.lm-install.*')),[])
-        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_bytes(),old)
+        self.assertIn(str(backups[0]),result.stdout)
     def test_upgrade_prior_binary_from_another_architecture(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
         self.trust_fixture_as_rc3(p, '7ce80da1c04283ba5ec1641df0a4684175190421855feef3ff77cc92e855c40d')
         self.run_install()
+        self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
+    def test_late_in_place_update_keeps_displaced_inode(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('ln','''#!/bin/sh
+/bin/ln "$@" || exit
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  for old in "$LM_INSTALL_HOME"/.local/bin/.lm-previous.*/lm; do
+    printf 'concurrent\\n' >> "$old"
+  done
+fi
+''')
+        self.run_install()
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertTrue(backups[0].read_bytes().endswith(b'concurrent\n'))
         self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
     def test_changed_entry_before_move_is_restored(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)

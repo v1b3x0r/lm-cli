@@ -129,9 +129,8 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
     ln "$stage" "$bindir/lm" || restore_or_preserve 'Another executable appeared during installation.'
     rm -f "$stage"
     cmp -s "$work/lm" "$bindir/lm" || fail "Installed path changed; previous executable preserved at $backup_dir/lm."
-    rm -f "$backup_dir/lm"
-    rmdir "$backup_dir"
     printf 'Upgraded lm from %s to %s.\n' "$previous" "$VERSION"
+    printf 'Previous executable saved at %s/lm.\n' "$backup_dir"
   fi
 else
   # A hard link publishes a complete file and refuses a concurrent overwrite.
