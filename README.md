@@ -144,12 +144,11 @@ do not necessarily mean the Room is full.
 ## Account login
 
 ```sh
-go build -o bin/lm-account ./cmd/lm
-./bin/lm-account login
-./bin/lm-account inspect --account
-./bin/lm-account state --account
-printf '%s' 'A fact for my World.' | ./bin/lm-account remember --account
-./bin/lm-account logout
+lm login
+lm inspect --account
+lm state --account
+printf '%s' 'A fact for my World.' | lm remember --account
+lm logout
 ```
 
 Login opens the existing browser consent flow and waits up to five minutes for

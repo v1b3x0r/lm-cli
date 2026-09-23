@@ -88,6 +88,12 @@ fi
         self.run_install(False)
         self.assertEqual(p.read_bytes(),data)
         self.assertFalse((self.base/'executed').exists())
+    def test_existing_install_lock_preserves_binary(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('keep me')
+        (p.parent/'.lm-install.lock').mkdir()
+        self.run_install(False)
+        self.assertEqual(p.read_text(),'keep me')
     def test_other_lm_on_path(self):
         self.tool('lm','#!/bin/sh\nexit 0\n'); self.run_install(False)
         self.assertFalse(self.root.exists())

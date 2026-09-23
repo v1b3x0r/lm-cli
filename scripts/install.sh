@@ -52,6 +52,10 @@ tar -xzf "$work/$archive" -C "$work" lm
 [ -f "$work/lm" ] && [ ! -L "$work/lm" ] || fail 'Release does not contain a regular lm executable.'
 chmod 755 "$work/lm"
 [ "$("$work/lm" version)" = "$VERSION" ] || fail 'Downloaded executable could not report the expected version.'
+mkdir -p "$bindir"
+install_lock=$bindir/.lm-install.lock
+mkdir -m 700 "$install_lock" 2>/dev/null || fail 'Another lm installation is running, or its lock remains. Nothing changed.'
+trap 'rmdir "$install_lock" 2>/dev/null || true; rm -rf "$work"' EXIT
 if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
   [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || fail "A different file exists at $bindir/lm. Nothing overwritten."
   if cmp -s "$work/lm" "$bindir/lm"; then
@@ -74,6 +78,8 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
       linux/arm64:35908c5e6640a0cc6d726b023e527df7d5ff56390aff01572390deadfddb43ac) previous=0.1.0-rc.3 ;;
       *) fail "An unrecognized lm exists at $bindir/lm. Nothing overwritten." ;;
     esac
+    [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] &&
+      [ "$(file_hash "$bindir/lm")" = "$previous_hash" ] || fail 'Existing lm changed during installation. Nothing overwritten.'
     stage=$(mktemp "$bindir/.lm-install.XXXXXX")
     if install -m 755 "$work/lm" "$stage" && mv -f "$stage" "$bindir/lm"; then
       printf 'Upgraded lm from %s to %s.\n' "$previous" "$VERSION"
@@ -83,7 +89,6 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
     fi
   fi
 else
-  mkdir -p "$bindir"
   # A hard link publishes a complete file and refuses a concurrent overwrite.
   stage=$(mktemp "$bindir/.lm-install.XXXXXX")
   if install -m 755 "$work/lm" "$stage" && ln "$stage" "$bindir/lm"; then rm -f "$stage"
