@@ -285,12 +285,30 @@ func (c Client) world(out, stderr io.Writer, asJSON bool) int {
 	if err != nil || len(inv.Spaces) == 0 {
 		return fail(errors.New("World access opened but inventory could not confirm its identity; run lm list before retrying"))
 	}
+	var active *Space
+	for i := range inv.Spaces {
+		if inv.Spaces[i].State == "active" {
+			active = &inv.Spaces[i]
+			break
+		}
+	}
+	if active == nil {
+		if asJSON {
+			if err := json.NewEncoder(out).Encode(map[string]any{"status": "activation_pending", "spaces": inv.Spaces, "next": "lm world"}); err != nil {
+				return fail(errors.New("output failed"))
+			}
+		} else if _, err := fmt.Fprintln(out, "World access is not active yet. If you just purchased, do not purchase again. Run lm world again after provisioning."); err != nil {
+			return fail(errors.New("output failed"))
+		}
+		return 0
+	}
+	next := "lm inspect world:" + shown(active.ID)
 	if asJSON {
-		if err := json.NewEncoder(out).Encode(map[string]any{"status": "active", "spaces": inv.Spaces, "next": "lm list"}); err != nil {
+		if err := json.NewEncoder(out).Encode(map[string]any{"status": "active", "spaces": inv.Spaces, "next": next}); err != nil {
 			return fail(errors.New("output failed"))
 		}
 	} else {
-		if _, err := fmt.Fprintf(out, "World ready: %s\nNext: lm list, then lm inspect world:%s\n", strings.Join(strings.Fields(terminalText(inv.Spaces[0].Name)), " "), shown(inv.Spaces[0].ID)); err != nil {
+		if _, err := fmt.Fprintf(out, "World ready: %s\nNext: %s\n", strings.Join(strings.Fields(terminalText(active.Name)), " "), next); err != nil {
 			return fail(errors.New("output failed"))
 		}
 	}

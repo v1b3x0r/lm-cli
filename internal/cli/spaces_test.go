@@ -243,6 +243,54 @@ func TestWorldPurchaseReturnAndUnknownBilling(t *testing.T) {
 	}
 }
 
+func TestWorldReadinessRequiresActiveInventoryEntry(t *testing.T) {
+	yes := true
+	otherID := "w_abcdef0123456789abcdef0123456789"
+	for _, state := range []string{"needs_subscription", "unknown"} {
+		t.Run(state, func(t *testing.T) {
+			c, _ := spaceClient(t, &yes, true)
+			base := c.HTTP.Transport
+			c.HTTP.Transport = authRoundTrip(func(r *http.Request) (*http.Response, error) {
+				if r.URL.String() != accountSpaces {
+					return base.RoundTrip(r)
+				}
+				spaces := []Space{{ID: optional(testRoomID), Name: "Pending World", Type: "world", Access: "owner", Lifecycle: "subscription", State: state, Endpoint: accountResource}}
+				body, _ := json.Marshal(accountInventory{Entitled: &yes, Spaces: spaces})
+				return authResponse(200, string(body)), nil
+			})
+			code, out, stderr := invokeTest(c, "", "world", "--json")
+			if code != 0 || stderr != "" || !strings.Contains(out, `"status":"activation_pending"`) || !strings.Contains(out, `"next":"lm world"`) || strings.Contains(out, `"status":"active"`) {
+				t.Fatal(code, out, stderr)
+			}
+			code, out, stderr = invokeTest(c, "", "world")
+			if code != 0 || stderr != "" || !strings.Contains(out, "not active yet") || strings.Contains(out, "World ready") {
+				t.Fatal(code, out, stderr)
+			}
+		})
+	}
+	c, _ := spaceClient(t, &yes, true)
+	base := c.HTTP.Transport
+	c.HTTP.Transport = authRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.String() != accountSpaces {
+			return base.RoundTrip(r)
+		}
+		spaces := []Space{
+			{ID: optional(testRoomID), Name: "Pending World", Type: "world", Access: "owner", Lifecycle: "subscription", State: "unknown", Endpoint: accountResource},
+			{ID: optional(otherID), Name: "Ready World", Type: "world", Access: "owner", Lifecycle: "subscription", State: "active", Endpoint: accountResource},
+		}
+		body, _ := json.Marshal(accountInventory{Entitled: &yes, Spaces: spaces})
+		return authResponse(200, string(body)), nil
+	})
+	code, out, stderr := invokeTest(c, "", "world", "--json")
+	if code != 0 || stderr != "" || !strings.Contains(out, `"status":"active"`) || !strings.Contains(out, `"next":"lm inspect world:`+otherID+`"`) {
+		t.Fatal(code, out, stderr)
+	}
+	code, out, stderr = invokeTest(c, "", "world")
+	if code != 0 || stderr != "" || !strings.Contains(out, "World ready: Ready World") || !strings.Contains(out, "lm inspect world:"+otherID) || strings.Contains(out, "lm inspect world:"+testRoomID) {
+		t.Fatal(code, out, stderr)
+	}
+}
+
 func TestListKeepsRoomsOnWorldFailure(t *testing.T) {
 	yes := true
 	c, _ := spaceClient(t, &yes, false)
