@@ -140,6 +140,22 @@ exec /bin/mv "$@"
         self.assertTrue(p.is_symlink())
         self.assertEqual(p.resolve(),target.resolve())
         self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_symlink_target_trailing_newline_is_restored_exactly(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.env['REPLACEMENT_TARGET']=str(self.base/'target')+'\n'
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  rm -f "$1"
+  /bin/ln -s "$REPLACEMENT_TARGET" "$1"
+fi
+exec /bin/mv "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_symlink())
+        self.assertEqual(os.readlink(p),self.env['REPLACEMENT_TARGET'])
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
     def test_directory_replacement_before_move_remains_reachable(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)

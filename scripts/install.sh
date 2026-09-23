@@ -5,7 +5,7 @@ main() {
 VERSION=0.1.0-rc.4
 RELEASE_TAG=v0.1.0-rc.4
 fail() { printf 'lm install: %s\n' "$*" >&2; exit 1; }
-for tool in curl tar awk mktemp install cmp mv readlink basename; do
+for tool in curl tar awk mktemp install cmp mv readlink; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command missing: $tool"
 done
 case "$(uname -s)" in Darwin) platform=darwin ;; Linux) platform=linux ;; *) fail 'Supported systems: macOS and Linux.' ;; esac
@@ -57,15 +57,26 @@ install_lock=$bindir/.lm-install.lock
 lock_owned=0
 stage=
 backup_dir=
+link_text() {
+  readlink -n "$1" || return 1
+  # Sentinel keeps trailing newlines intact through command substitution.
+  printf .
+}
 restore_displaced() {
   [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ] || return 1
   [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || return 1
   if [ -L "$backup_dir/lm" ]; then
-    target=$(readlink "$backup_dir/lm") || return 1
+    target=$(link_text "$backup_dir/lm") || return 1
+    target=${target%.}
     ln -s "$target" "$bindir/lm" 2>/dev/null || return 1
-    if ! { [ -L "$bindir/lm" ] && [ "$(readlink "$bindir/lm")" = "$target" ]; }; then
-      nested=$bindir/lm/$(basename "$target")
-      if [ -d "$bindir/lm" ] && [ -L "$nested" ] && [ "$(readlink "$nested")" = "$target" ]; then rm -f "$nested"; fi
+    if ! { [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$target." ]; }; then
+      name=$target
+      while [ "${name%/}" != "$name" ]; do name=${name%/}; done
+      name=${name##*/}
+      if [ -n "$name" ]; then
+        nested=$bindir/lm/$name
+        if [ -d "$bindir/lm" ] && [ -L "$nested" ] && [ "$(link_text "$nested")" = "$target." ]; then rm -f "$nested"; fi
+      fi
       return 1
     fi
     rm -f "$backup_dir/lm"
@@ -82,9 +93,9 @@ restore_displaced() {
   elif [ -d "$backup_dir/lm" ]; then
     # A directory cannot be hard-linked; keep it at the backup path.
     ln -s "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
-    if ! { [ -L "$bindir/lm" ] && [ "$(readlink "$bindir/lm")" = "$backup_dir/lm" ]; }; then
+    if ! { [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$backup_dir/lm." ]; }; then
       nested=$bindir/lm/lm
-      if [ -d "$bindir/lm" ] && [ -L "$nested" ] && [ "$(readlink "$nested")" = "$backup_dir/lm" ]; then rm -f "$nested"; fi
+      if [ -d "$bindir/lm" ] && [ -L "$nested" ] && [ "$(link_text "$nested")" = "$backup_dir/lm." ]; then rm -f "$nested"; fi
       return 1
     fi
   else
