@@ -109,6 +109,18 @@ exec /bin/ln "$@"
         backups=list(p.parent.glob('.lm-previous.*/lm'))
         self.assertEqual(len(backups),1)
         self.assertEqual(backups[0].read_bytes(),old)
+    def test_signal_after_move_restores_previous_binary(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        old=b'#!/bin/sh\necho 0.1.0-rc.3\n'; p.write_bytes(old); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+/bin/mv "$@" || exit
+kill -TERM "$PPID"
+''')
+        self.run_install(False)
+        self.assertEqual(p.read_bytes(),old)
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+        self.assertFalse((p.parent/'.lm-install.lock').exists())
     def test_version_spoof_is_not_executed_or_overwritten(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         data=b'#!/bin/sh\ntouch "$FIXTURES/executed"\necho 0.1.0-rc.3\n'

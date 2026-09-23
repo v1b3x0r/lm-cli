@@ -55,7 +55,24 @@ chmod 755 "$work/lm"
 mkdir -p "$bindir"
 install_lock=$bindir/.lm-install.lock
 mkdir -m 700 "$install_lock" 2>/dev/null || fail 'Another lm installation is running, or its lock remains. Nothing changed.'
-trap 'rmdir "$install_lock" 2>/dev/null || true; rm -rf "$work"' EXIT
+stage=
+backup_dir=
+cleanup() {
+  # A signal may arrive after the old entry moves but before RC4 is linked.
+  if [ -n "$backup_dir" ] && [ -f "$backup_dir/lm" ] && [ ! -L "$backup_dir/lm" ]; then
+    if [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ]; then
+      ln "$backup_dir/lm" "$bindir/lm" 2>/dev/null || true
+    fi
+    if [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && cmp -s "$backup_dir/lm" "$bindir/lm"; then
+      rm -f "$backup_dir/lm"
+      rmdir "$backup_dir"
+    fi
+  fi
+  [ -z "$stage" ] || rm -f "$stage"
+  rmdir "$install_lock" 2>/dev/null || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
 if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
   [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || fail "A different file exists at $bindir/lm. Nothing overwritten."
   if cmp -s "$work/lm" "$bindir/lm"; then
