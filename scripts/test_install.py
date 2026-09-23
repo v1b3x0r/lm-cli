@@ -153,6 +153,42 @@ exec /bin/ln "$@"
         backups=list(p.parent.glob('.lm-previous.*/lm'))
         self.assertEqual(len(backups),1)
         self.assertEqual(backups[0].read_bytes(),old)
+    def test_directory_race_does_not_report_new_install(self):
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then /bin/mkdir "$2"; fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        dest=self.root/'.local/bin/lm'
+        self.assertTrue(dest.is_dir())
+        self.assertEqual(list(dest.iterdir()),[])
+    def test_symlink_directory_race_does_not_report_new_install(self):
+        target=self.base/'other-directory'; target.mkdir()
+        self.env['RACE_DIRECTORY']=str(target)
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  /bin/ln -s "$RACE_DIRECTORY" "$2"
+fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        dest=self.root/'.local/bin/lm'
+        self.assertTrue(dest.is_symlink())
+        self.assertEqual(list(target.iterdir()),[])
+    def test_directory_race_preserves_prior_upgrade(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        old=b'#!/bin/sh\necho 0.1.0-rc.3\n'; p.write_bytes(old); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then /bin/mkdir "$2"; fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_dir())
+        self.assertEqual(list(p.iterdir()),[])
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_bytes(),old)
     def test_signal_after_move_restores_previous_binary(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         old=b'#!/bin/sh\necho 0.1.0-rc.3\n'; p.write_bytes(old); p.chmod(0o755)

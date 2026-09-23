@@ -77,6 +77,15 @@ trap '' HUP INT TERM
 mkdir -m 700 "$install_lock" 2>/dev/null || fail 'Another lm installation is running, or its lock remains. Nothing changed.'
 lock_owned=1
 trap 'exit 1' HUP INT TERM
+publish_stage() {
+  ln "$stage" "$bindir/lm" || return 1
+  if [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && cmp -s "$stage" "$bindir/lm"; then
+    return 0
+  fi
+  # ln may have succeeded *inside* a directory that raced into the target path.
+  if [ -d "$bindir/lm" ]; then rm -f "$bindir/lm/${stage##*/}"; fi
+  return 1
+}
 if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
   [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || fail "A different file exists at $bindir/lm. Nothing overwritten."
   if cmp -s "$work/lm" "$bindir/lm"; then
@@ -126,7 +135,7 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
     fi
     [ -f "$backup_dir/lm" ] && [ ! -L "$backup_dir/lm" ] &&
       [ "$(file_hash "$backup_dir/lm")" = "$previous_hash" ] || restore_or_preserve 'Existing lm changed during installation.'
-    ln "$stage" "$bindir/lm" || restore_or_preserve 'Another executable appeared during installation.'
+    publish_stage || restore_or_preserve 'Another entry appeared during installation.'
     rm -f "$stage"
     cmp -s "$work/lm" "$bindir/lm" || fail "Installed path changed; previous executable preserved at $backup_dir/lm."
     printf 'Upgraded lm from %s to %s.\n' "$previous" "$VERSION"
@@ -135,7 +144,7 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
 else
   # A hard link publishes a complete file and refuses a concurrent overwrite.
   stage=$(mktemp "$bindir/.lm-install.XXXXXX")
-  if install -m 755 "$work/lm" "$stage" && ln "$stage" "$bindir/lm"; then rm -f "$stage"
+  if install -m 755 "$work/lm" "$stage" && publish_stage; then rm -f "$stage"
   else rm -f "$stage"; fail 'Could not install lm without overwriting an existing file.'; fi
 fi
 quoted=$(printf '%s' "$bindir" | sed "s/'/'\\\\''/g")
