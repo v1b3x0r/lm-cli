@@ -16,11 +16,12 @@ lm inspect my-project --json
 
 Use an existing alias if this project already has one. Never create another Room
 just to resume. Local names are not remote resource IDs. The credential is saved
-privately. create/list/inspect deliberately display full door links, so keep
-those outputs private unless sharing that door's access is intended.
+privately. The linked RC3 binary displays full door links in create, list, and
+inspect. Keep that output private unless sharing the door's access is intended.
 
-`list` reads local snapshots without networking. `inspect` reads the live Room's
-canonical ID (`w_…`), memory state, and available tools. Open and Guide both point
+The linked RC3 binary lists local Room snapshots without networking. `inspect`
+reads the live Room's canonical ID (`w_…`), memory state, and available tools.
+Open and Guide both point
 to Theatre with the public `ro_…` token in the fragment when available; MCP
 retains the owner grant endpoint and must stay private. Never substitute the canonical ID into the fragment.
 Older grants learn/cache their ID through inspect when `world_list` is offered.
@@ -75,9 +76,14 @@ subscribers should connect their existing World rather than buy again. Do not
 request passwords, payment details, or attempt to pay autonomously.
 
 **A purchase currently creates access to a separate World. Room data is not
-automatically transferred, and this CLI cannot confirm payment or resume into
-the World.** After purchase, follow the site's World setup for the MCP client.
+automatically transferred, and the linked RC3 CLI cannot confirm payment or
+resume into the World.** After purchase, follow the site's World setup for the
+MCP client.
 Do not tell the user `lm` has switched to World or that Room limits have changed.
+
+The unreleased RC4 source build adds `lm login`, authenticated World inventory
+in `lm list`, and `lm world` activation after checkout. Use those instructions
+only with a build reporting `0.1.0-rc.4-dev`; RC3 retains the workflow above.
 
 `ROOM_FULL` leaves existing memories readable and points to `lm world`. Other
 429 responses can be daily limits; do not describe every rate limit as a reason

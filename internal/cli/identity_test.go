@@ -76,7 +76,7 @@ func TestListIsLocalAndOldGrantSurvivesTransfer(t *testing.T) {
 	}
 	for _, args := range [][]string{{"list"}, {"list", "--json"}} {
 		code, out, stderr := invokeTest(c, "", args...)
-		if code != 0 || stderr != "" || !strings.Contains(out, "old") || !strings.Contains(out, "pending") || !strings.Contains(out, testToken) {
+		if code != 0 || stderr != "" || !strings.Contains(out, "old") || !strings.Contains(out, "pending") || strings.Contains(out, testToken) {
 			t.Fatal(code, out, stderr)
 		}
 		if len(args) == 2 && !strings.Contains(out, `"roomId":null`) {

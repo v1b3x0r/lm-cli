@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 )
 
-const worldURL = "https://living-memory.app/create#world"
+const worldURL = "https://viibe.to/living-memory/keep/"
+const termsURL = "https://viibe.to/living-memory/terms/"
+const privacyURL = "https://viibe.to/living-memory/privacy/"
 
 func (c Client) extra(command string, args []string, room, asJSON bool, in io.Reader, out, stderr io.Writer) int {
 	fail := func(err error) int { fmt.Fprintln(stderr, "lm:", err); return 1 }
@@ -26,59 +27,14 @@ func (c Client) extra(command string, args []string, room, asJSON bool, in io.Re
 		if len(args) != 0 {
 			return fail(errors.New("usage: lm world [--json]"))
 		}
-		info := map[string]any{"url": worldURL, "next": "Sign in on the website, review the current plan, and complete checkout there. Already subscribed? Use the existing World setup.", "roomMigration": false, "note": "Your Room remains separate. This command does not buy anything or confirm payment."}
-		if asJSON {
-			return emit(info)
-		}
-		_, err := fmt.Fprintf(out, "Continue to your World: %s\nSign in, review the current plan, and complete checkout on the website.\nAlready subscribed? Use your existing World setup.\nYour Room remains separate; automatic migration and CLI payment confirmation are not available.\n", worldURL)
-		if err != nil {
-			return fail(errors.New("output failed"))
-		}
-		return 0
+		return c.world(out, stderr, asJSON)
 	}
 	if command == "list" {
 		if len(args) != 0 {
 			return fail(errors.New("usage: lm list [--json]"))
 		}
-		if _, err := c.storePath("check"); err != nil {
+		if err := c.listSpaces(out, asJSON); err != nil {
 			return fail(err)
-		}
-		entries, err := os.ReadDir(c.Home)
-		if err != nil {
-			return fail(errors.New("cannot read local inventory"))
-		}
-		rows := []RoomSummary{}
-		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".grant.json") {
-				name := strings.TrimSuffix(e.Name(), ".grant.json")
-				g, err := c.load(name)
-				if err != nil {
-					row := summary(Grant{Name: name})
-					row.Saved = false
-					row.State = "unavailable_or_pending"
-					row.Next = "Check the saved grant; do not blindly recreate this Room."
-					rows = append(rows, row)
-				} else {
-					rows = append(rows, summary(g))
-				}
-			}
-		}
-		if asJSON {
-			return emit(map[string]any{"scope": "local", "rooms": rows})
-		}
-		if _, err := fmt.Fprintln(out, "Local Rooms (saved snapshots; no network lookup):"); err != nil {
-			return fail(errors.New("output failed"))
-		}
-		if len(rows) == 0 {
-			_, err = fmt.Fprintln(out, "No Rooms saved here. Next: lm create my-room --room")
-		}
-		for _, row := range rows {
-			if err == nil {
-				err = renderSummary(out, row)
-			}
-		}
-		if err != nil {
-			return fail(errors.New("output failed"))
 		}
 		return 0
 	}
@@ -121,6 +77,9 @@ func (c Client) extra(command string, args []string, room, asJSON bool, in io.Re
 		return emit(g)
 	}
 	params := map[string]any{}
+	if c.accountGrant != nil && c.accountGrant.RoomID != "" {
+		params["world_id"] = c.accountGrant.RoomID
+	}
 	if command == "remember" || command == "recall" || command == "handoff" {
 		data, err := io.ReadAll(io.LimitReader(in, 65537))
 		if err != nil || len(data) > 65536 || strings.TrimSpace(string(data)) == "" {

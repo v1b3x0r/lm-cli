@@ -3,6 +3,8 @@
 import hashlib, io, os, pathlib, subprocess, tarfile, tempfile, unittest
 SCRIPT = pathlib.Path(__file__).with_name('install.sh').resolve()
 VERSION = '0.1.0-rc.3'
+RELEASE_TAG = 'v0.1.0-rc-3'
+RELEASE_BASE = f'https://github.com/v1b3x0r/lm-cli/releases/download/{RELEASE_TAG}'
 class Installer(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='lm-installer-test-')
@@ -11,13 +13,21 @@ class Installer(unittest.TestCase):
         self.mock = self.base / 'tools'; self.mock.mkdir()
         self.env = dict(os.environ, PATH=str(self.mock)+':/usr/bin:/bin:/usr/sbin:/sbin',
                         SHELL='/bin/zsh', LM_INSTALL_HOME=str(self.root), ZDOTDIR=str(self.root),
-                        FIXTURES=str(self.base), MOCK_OS='Darwin', MOCK_ARCH='arm64')
+                        FIXTURES=str(self.base), MOCK_OS='Darwin', MOCK_ARCH='arm64',
+                        EXPECTED_RELEASE_BASE=RELEASE_BASE, EXPECTED_VERSION=VERSION)
         self.tool('uname', '#!/bin/sh\ncase "$1" in -s) echo "$MOCK_OS";; -m) echo "$MOCK_ARCH";; esac\n')
         self.tool('curl', '''#!/bin/sh
 while [ "$#" -gt 0 ]; do
  case "$1" in https://*) url=$1;; -o) shift; dest=$1;; esac
  shift
 done
+case "$MOCK_OS" in Darwin) platform=darwin;; Linux) platform=linux;; *) exit 22;; esac
+case "$MOCK_ARCH" in arm64|aarch64) arch=arm64;; x86_64|amd64) arch=amd64;; *) exit 22;; esac
+case "$url" in
+ "$EXPECTED_RELEASE_BASE/lm-cli_${EXPECTED_VERSION}_${platform}_${arch}.tar.gz"|"$EXPECTED_RELEASE_BASE/SHA256SUMS") ;;
+ *) echo "Unexpected release URL: $url" >&2; exit 22;;
+esac
+printf '%s\\n' "$url" >> "$FIXTURES/requested-urls"
 cp "$FIXTURES/${url##*/}" "$dest"
 ''')
         for system, arch in [('darwin','arm64'), ('darwin','amd64'), ('linux','arm64'), ('linux','amd64')]:
@@ -42,6 +52,12 @@ cp "$FIXTURES/${url##*/}" "$dest"
         self.assertEqual(profile.read_text().count('# Living Memory CLI'),1)
         p=subprocess.run(['/bin/zsh','-ic','lm version'],env=self.env,text=True,capture_output=True)
         self.assertEqual(p.returncode,0,p.stderr); self.assertIn(VERSION,p.stdout)
+    def test_exact_release_urls(self):
+        self.run_install()
+        self.assertEqual((self.base/'requested-urls').read_text().splitlines(), [
+            f'{RELEASE_BASE}/lm-cli_{VERSION}_darwin_arm64.tar.gz',
+            f'{RELEASE_BASE}/SHA256SUMS',
+        ])
     def test_bad_checksum_writes_nothing(self):
         (self.base/'SHA256SUMS').write_text('0'*64+f'  lm-cli_{VERSION}_darwin_arm64.tar.gz\n')
         self.run_install(False); self.assertFalse(self.root.exists())
