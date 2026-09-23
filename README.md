@@ -220,7 +220,7 @@ and add a `space` projection with canonical ID, type, access, lifecycle and stat
 
 | Field       | Contents                                                                                                       |
 | ----------- | -------------------------------------------------------------------------------------------------------------- |
-| `identity`  | `alias`, canonical `roomId` or null, and `source` (`unknown`, `local_snapshot`, or `live`).                    |
+| `identity`  | `alias`, canonical `roomId` or null, and `source` (`unknown`, `local_snapshot`, `selected`, or `live`).        |
 | `addresses` | `open`, `guide`, `mcp`, `access`, and a credential-specific `warning`. Unsupported browser entrances are null. |
 | `lifecycle` | `expiresAtAtCreation`, `currentExpiresAt` (currently null), `source`, and server lifecycle `note`.             |
 

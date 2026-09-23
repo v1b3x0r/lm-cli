@@ -3,8 +3,11 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +101,72 @@ func TestWorldHumanTitleWithSpacesSelectsDirectly(t *testing.T) {
 	_, id, world, err := c.resolveSelector("Cycling Series")
 	if err != nil || !world || id != testRoomID {
 		t.Fatal(id, world, err)
+	}
+}
+
+func TestExplicitWorldRefreshesBeforeInventoryAndMCP(t *testing.T) {
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "private")
+	if err := c.saveAccount(account{ClientID: "client", Access: "expired", Refresh: "old-refresh", Expires: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	refreshes, inventories, mcpCalls := 0, 0, 0
+	c.HTTP = &http.Client{Transport: authRoundTrip(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.String() {
+		case accountIssuer + "/v1/oauth2/token":
+			refreshes++
+			body, _ := io.ReadAll(r.Body)
+			values, _ := url.ParseQuery(string(body))
+			if values.Get("refresh_token") != "old-refresh" || r.Header.Get("Authorization") != "" {
+				t.Fatal("incorrect refresh request")
+			}
+			return authResponse(200, `{"access_token":"fresh","refresh_token":"rotated","token_type":"Bearer","expires_in":3600}`), nil
+		case accountSpaces:
+			inventories++
+			if r.Header.Get("Authorization") != "Bearer fresh" {
+				t.Fatal("inventory used stale token")
+			}
+			return authResponse(200, `{"entitled":true,"spaces":[{"id":"`+testRoomID+`","name":"journal","type":"world","access":"owner","lifecycle":"subscription","state":"active","endpoint":"`+accountResource+`"}]}`), nil
+		case accountResource:
+			mcpCalls++
+			if r.Header.Get("Authorization") != "Bearer fresh" {
+				t.Fatal("MCP used stale token")
+			}
+			var req struct {
+				ID     int    `json:"id"`
+				Method string `json:"method"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatal(err)
+			}
+			result := `{"protocolVersion":"2025-06-18"}`
+			if req.Method == "tools/list" {
+				result = `{"tools":[]}`
+			}
+			return authResponse(200, `{"jsonrpc":"2.0","id":`+strconv.Itoa(req.ID)+`,"result":`+result+`}`), nil
+		}
+		t.Fatal("unexpected destination")
+		return authResponse(500, ""), nil
+	})}
+	code, out, stderr := invokeTest(c, "", "inspect", "world:"+testRoomID, "--json")
+	if code != 0 || stderr != "" || refreshes != 1 || inventories != 1 || mcpCalls != 2 || !strings.Contains(out, `"next":"lm state world:`+testRoomID+`"`) {
+		t.Fatal(code, out, stderr, refreshes, inventories, mcpCalls)
+	}
+	saved, err := c.readAccount()
+	if err != nil || saved.Refresh != "rotated" {
+		t.Fatal("refresh was not persisted", err)
+	}
+}
+
+func TestWorldInspectionNextKeepsSelectedID(t *testing.T) {
+	yes := true
+	c, _ := spaceClient(t, &yes, true)
+	code, out, stderr := invokeTest(c, "", "inspect", "world:"+testRoomID, "--json")
+	if code != 0 || stderr != "" || !strings.Contains(out, `"next":"lm state world:`+testRoomID+`"`) || !strings.Contains(out, `"roomId":"`+testRoomID+`"`) {
+		t.Fatal(code, out, stderr)
+	}
+	if next := summary(Grant{Kind: "world", URL: accountResource}).Next; next != "lm state --account" {
+		t.Fatal(next)
 	}
 }
 

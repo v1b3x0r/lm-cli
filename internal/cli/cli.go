@@ -319,7 +319,6 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 		if err != nil {
 			return fail(err)
 		}
-		c = c.withAccount(&a)
 		if selectedWorldID != "" {
 			inv, e := c.fetchSpaces(&a)
 			if e != nil {
@@ -335,6 +334,7 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 				return fail(errors.New("World is not accessible from this account"))
 			}
 		}
+		c = c.withAccount(&a)
 		c.accountGrant = &Grant{Name: "account", Kind: "world", RoomID: selectedWorldID, URL: accountResource}
 		positional = []string{"@account"}
 	}

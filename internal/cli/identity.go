@@ -80,7 +80,13 @@ func addresses(endpoint string, publicEndpoint ...string) Addresses {
 
 func summary(g Grant) RoomSummary {
 	if g.Kind == "world" {
-		return RoomSummary{Space: Space{ID: optional(g.RoomID), Name: "World", Type: "world", Access: "owner", Lifecycle: "subscription", State: "unknown", Endpoint: g.URL}, Name: "account", Kind: "world", Saved: true, Next: "lm state --account", Identity: Identity{Alias: "account", Source: "unknown"}, Addresses: Addresses{MCP: g.URL, Access: "authenticated", Warning: "OAuth account access; no shareable door is exposed."}, Lifecycle: Lifecycle{Source: "not_applicable", Note: "World subscription lifecycle is separate from free Room expiry."}}
+		next := "lm state --account"
+		source := "unknown"
+		if g.RoomID != "" {
+			next = "lm state world:" + g.RoomID
+			source = "selected"
+		}
+		return RoomSummary{Space: Space{ID: optional(g.RoomID), Name: "World", Type: "world", Access: "owner", Lifecycle: "subscription", State: "unknown", Endpoint: g.URL}, Name: "account", Kind: "world", Saved: true, Next: next, Identity: Identity{Alias: "account", RoomID: optional(g.RoomID), Source: source}, Addresses: Addresses{MCP: g.URL, Access: "authenticated", Warning: "OAuth account access; no shareable door is exposed."}, Lifecycle: Lifecycle{Source: "not_applicable", Note: "World subscription lifecycle is separate from free Room expiry."}}
 	}
 	id := g.RoomID
 	if !roomIDPattern.MatchString(id) {
