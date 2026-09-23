@@ -59,13 +59,12 @@ stage=
 backup_dir=
 cleanup() {
   # A signal may arrive after the old entry moves but before RC4 is linked.
-  if [ -n "$backup_dir" ] && [ -f "$backup_dir/lm" ] && [ ! -L "$backup_dir/lm" ]; then
+  if [ -n "$backup_dir" ] && { [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; }; then
     if [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ]; then
-      ln "$backup_dir/lm" "$bindir/lm" 2>/dev/null || true
-    fi
-    if [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && cmp -s "$backup_dir/lm" "$bindir/lm"; then
-      rm -f "$backup_dir/lm"
-      rmdir "$backup_dir"
+      if ln -P "$backup_dir/lm" "$bindir/lm" 2>/dev/null; then
+        rm -f "$backup_dir/lm"
+        rmdir "$backup_dir"
+      fi
     fi
   fi
   [ -z "$stage" ] || rm -f "$stage"
@@ -102,9 +101,9 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
     backup_dir=$(mktemp -d "$bindir/.lm-previous.XXXXXX")
     restore_or_preserve() {
       rm -f "$stage"
-      if [ -f "$backup_dir/lm" ] && [ ! -L "$backup_dir/lm" ] &&
+      if { [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; } &&
          [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ] &&
-         ln "$backup_dir/lm" "$bindir/lm" 2>/dev/null; then
+         ln -P "$backup_dir/lm" "$bindir/lm" 2>/dev/null; then
         rm -f "$backup_dir/lm"
         rmdir "$backup_dir"
         fail "$1 Previous executable restored."
