@@ -99,7 +99,7 @@ func summary(g Grant) RoomSummary {
 	return RoomSummary{
 		Space: Space{ID: optional(id), Name: g.Name, Type: "room", Access: addresses(g.URL, g.ReadOnlyURL).Access, Lifecycle: "inactivity_expiry", State: "saved", Endpoint: g.URL},
 		Name:  g.Name, Kind: g.Kind, ExpiresAtAtCreation: g.ExpiresAt, Saved: true,
-		Next:     "lm inspect " + g.Name,
+		Next:     "lm inspect room:" + g.Name,
 		Identity: Identity{Alias: g.Name, RoomID: optional(id), Source: source}, Addresses: addresses(g.URL, g.ReadOnlyURL),
 		Lifecycle: Lifecycle{ExpiresAtAtCreation: optional(g.ExpiresAt), Source: "local_snapshot", Note: g.Note},
 	}
@@ -202,9 +202,9 @@ func (c Client) Inspect(g Grant) (Inspection, error) {
 	}
 	if g.Kind != "world" && aliasPattern.MatchString(g.Name) {
 		if has("handoff_read") {
-			out.Next = "lm resume " + g.Name
+			out.Next = "lm resume room:" + g.Name
 		} else if has("memory_state") {
-			out.Next = "lm state " + g.Name
+			out.Next = "lm state room:" + g.Name
 		}
 	}
 	if has("world_list") {

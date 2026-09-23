@@ -73,7 +73,8 @@ func spaceClient(t *testing.T, entitled *bool, initialWorld bool, worldName ...s
 func TestSpacesListAndSelectorCollision(t *testing.T) {
 	yes := true
 	c, _ := spaceClient(t, &yes, true)
-	saveTestGrant(t, c, Grant{Name: "journal", Kind: "room", RoomID: testRoomID, URL: "https://lme.viibe.to/t/" + testToken + "/mcp", ExpiresAt: "2026-10-12T00:00:00Z"})
+	owner := "https://lme.viibe.to/t/" + testToken + "/mcp"
+	saveTestGrant(t, c, Grant{Name: "journal", Kind: "room", RoomID: testRoomID, URL: owner, ExpiresAt: "2026-10-12T00:00:00Z"})
 	for _, args := range [][]string{{"list"}, {"list", "--json"}} {
 		code, out, stderr := invokeTest(c, "", args...)
 		if code != 0 || stderr != "" || strings.Count(out, "journal") < 2 || strings.Contains(out, testToken) || strings.Contains(out, "secret-account-token") || strings.Contains(out, accountResource) {
@@ -92,6 +93,38 @@ func TestSpacesListAndSelectorCollision(t *testing.T) {
 	code, out, stderr := invokeTest(c, "", "state", "world:"+testRoomID, "--json")
 	if code != 0 || stderr != "" || !strings.Contains(out, "episodicCount") {
 		t.Fatal(code, out, stderr)
+	}
+	base := c.HTTP.Transport
+	selectedTool := ""
+	c.HTTP.Transport = authRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.String() != owner {
+			return base.RoundTrip(r)
+		}
+		var req struct {
+			ID     int    `json:"id"`
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		result := map[string]any{"protocolVersion": "2025-06-18"}
+		if req.Method == "tools/list" {
+			result = map[string]any{"tools": []map[string]string{{"name": selectedTool}}}
+		} else if req.Method == "tools/call" {
+			result = map[string]any{"structuredContent": map[string]int{"episodicCount": 1, "selfFacetCount": 0, "prospectiveCount": 0}}
+		}
+		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": result})
+		return authResponse(200, string(body)), nil
+	})
+	for _, tc := range []struct{ tool, next string }{{"handoff_read", "lm resume room:journal"}, {"memory_state", "lm state room:journal"}} {
+		selectedTool = tc.tool
+		code, out, stderr = invokeTest(c, "", "inspect", "room:journal", "--json")
+		if code != 0 || stderr != "" || !strings.Contains(out, `"next":"`+tc.next+`"`) {
+			t.Fatal(tc, code, out, stderr)
+		}
+	}
+	if next := summary(Grant{Name: "journal", Kind: "room", URL: owner}).Next; next != "lm inspect room:journal" {
+		t.Fatal(next)
 	}
 }
 

@@ -181,7 +181,7 @@ func privateListRoom(row RoomSummary) RoomSummary {
 	row.Addresses.Open = nil
 	row.Addresses.Guide = nil
 	row.Addresses.MCP = ""
-	row.Addresses.Warning = "Run lm inspect " + row.Name + " for entrances."
+	row.Addresses.Warning = "Run lm inspect room:" + row.Name + " for entrances."
 	return row
 }
 
