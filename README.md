@@ -16,11 +16,10 @@ macOS or Linux:
 curl -fsSL https://living-memory-cli.pages.dev/install.sh | sh
 ```
 
-Open a new Terminal tab and run `lm version`. The published installer still targets
-[0.1.0-rc.3](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.3).
-This checkout builds `0.1.0-rc.4-dev`; it is a candidate, not a released RC4.
-Deploy the new `/spaces` backend before testing its account inventory. To try
-this checkout, with Go installed:
+Open a new Terminal tab and run `lm version`. The RC4 installer targets
+[0.1.0-rc.4](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.4).
+The `/spaces` backend must be available for authenticated World inventory. To
+build this checkout with Go installed:
 
 ```sh
 go build -o bin/lm ./cmd/lm
@@ -142,10 +141,7 @@ No price is hard-coded; the website remains the purchase authority.
 points to `lm world` while existing memories remain readable. Other rate limits
 do not necessarily mean the Room is full.
 
-## Account login (RC4 source candidate)
-
-The released RC3 remains the Room release. Build this checkout to try RC4;
-no new release or installer version has been published for this feature.
+## Account login
 
 ```sh
 go build -o bin/lm-account ./cmd/lm
@@ -248,10 +244,10 @@ failure keeps local identity visible and exits nonzero.
 On 2026-09-20, one production Room passed creation, discovery, handoff/resume
 across processes, memory write/recall, and private grant transfer to a second
 agent directory followed by resume. The purchase entry returned HTTP 200; no
-purchase or authenticated checkout was performed. These are prior release
-checks, not evidence that the identity changes have been deployed.
+purchase or authenticated checkout was performed. These are historical RC1
+checks, not RC4 account journey acceptance.
 
-Run `python3 scripts/package.py 0.1.0-rc.3` to build macOS/Linux bundles with
+Run `python3 scripts/package.py 0.1.0-rc.4` to build macOS/Linux bundles with
 checksums and the agent quickstart. Publishing remains a separate step after
 verification. World administration, step-up authentication, watch, and UI are
 outside this slice.

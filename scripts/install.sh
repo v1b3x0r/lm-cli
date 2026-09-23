@@ -2,11 +2,10 @@
 # Install the official lm release without administrator access.
 set -eu
 main() {
-VERSION=0.1.0-rc.3
-# RC3 was published with this tag; asset names and binary version use VERSION.
-RELEASE_TAG=v0.1.0-rc-3
+VERSION=0.1.0-rc.4
+RELEASE_TAG=v0.1.0-rc.4
 fail() { printf 'lm install: %s\n' "$*" >&2; exit 1; }
-for tool in curl tar awk mktemp install cmp; do
+for tool in curl tar awk mktemp install cmp mv; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command missing: $tool"
 done
 case "$(uname -s)" in Darwin) platform=darwin ;; Linux) platform=linux ;; *) fail 'Supported systems: macOS and Linux.' ;; esac
@@ -51,8 +50,23 @@ tar -xzf "$work/$archive" -C "$work" lm
 chmod 755 "$work/lm"
 [ "$("$work/lm" version)" = "$VERSION" ] || fail 'Downloaded executable could not report the expected version.'
 if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
-  [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && cmp -s "$work/lm" "$bindir/lm" || fail "A different file exists at $bindir/lm. Nothing overwritten."
-  printf 'lm %s is already installed.\n' "$VERSION"
+  [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || fail "A different file exists at $bindir/lm. Nothing overwritten."
+  if cmp -s "$work/lm" "$bindir/lm"; then
+    printf 'lm %s is already installed.\n' "$VERSION"
+  else
+    previous=$("$bindir/lm" version 2>/dev/null || true)
+    case "$previous" in
+      0.1.0-rc.1|0.1.0-rc.2|0.1.0-rc.3) ;;
+      *) fail "An unrecognized lm exists at $bindir/lm. Nothing overwritten." ;;
+    esac
+    stage=$(mktemp "$bindir/.lm-install.XXXXXX")
+    if install -m 755 "$work/lm" "$stage" && mv -f "$stage" "$bindir/lm"; then
+      printf 'Upgraded lm from %s to %s.\n' "$previous" "$VERSION"
+    else
+      rm -f "$stage"
+      fail 'Could not upgrade lm. The existing executable was left in place.'
+    fi
+  fi
 else
   mkdir -p "$bindir"
   # A hard link publishes a complete file and refuses a concurrent overwrite.

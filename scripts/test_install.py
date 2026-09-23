@@ -2,8 +2,8 @@
 """Exercise installer failure boundaries without touching the owner's shell config."""
 import hashlib, io, os, pathlib, subprocess, tarfile, tempfile, unittest
 SCRIPT = pathlib.Path(__file__).with_name('install.sh').resolve()
-VERSION = '0.1.0-rc.3'
-RELEASE_TAG = 'v0.1.0-rc-3'
+VERSION = '0.1.0-rc.4'
+RELEASE_TAG = 'v0.1.0-rc.4'
 RELEASE_BASE = f'https://github.com/v1b3x0r/lm-cli/releases/download/{RELEASE_TAG}'
 class Installer(unittest.TestCase):
     def setUp(self):
@@ -32,7 +32,7 @@ cp "$FIXTURES/${url##*/}" "$dest"
 ''')
         for system, arch in [('darwin','arm64'), ('darwin','amd64'), ('linux','arm64'), ('linux','amd64')]:
             name=f'lm-cli_{VERSION}_{system}_{arch}.tar.gz'
-            data=b'#!/bin/sh\necho 0.1.0-rc.3\n'
+            data=f'#!/bin/sh\necho {VERSION}\n'.encode()
             with tarfile.open(self.base/name,'w:gz') as tf:
                 info=tarfile.TarInfo('lm'); info.mode=0o755; info.size=len(data)
                 tf.addfile(info, io.BytesIO(data))
@@ -65,6 +65,13 @@ cp "$FIXTURES/${url##*/}" "$dest"
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True); p.write_text('keep me')
         self.run_install(False); self.assertEqual(p.read_text(),'keep me')
         self.assertFalse((self.root/'.zshrc').exists())
+    def test_upgrade_known_rc3_binary(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        result=self.run_install()
+        self.assertIn(f'Upgraded lm from 0.1.0-rc.3 to {VERSION}', result.stdout)
+        self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
+        self.assertEqual(list(p.parent.glob('.lm-install.*')),[])
     def test_other_lm_on_path(self):
         self.tool('lm','#!/bin/sh\nexit 0\n'); self.run_install(False)
         self.assertFalse(self.root.exists())

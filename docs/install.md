@@ -1,8 +1,8 @@
 # Install a release bundle
 
-Release candidate: `0.1.0-rc.3`.
+Release candidate: `0.1.0-rc.4`.
 Obtain the archive and `SHA256SUMS` from the
-[official release](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.3).
+[official release](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.4).
 Do not fetch similarly named packages from an unrelated registry.
 
 ## One command (macOS / Linux, zsh or bash)
@@ -13,8 +13,9 @@ curl -fsSL https://living-memory-cli.pages.dev/install.sh | sh
 
 The installer selects the matching release, checks its SHA-256 checksum, and
 installs `lm` in `~/.local/bin`. It adds that directory to your shell profile.
-No administrator access, Go, or Node.js is required. It refuses to overwrite a
-different executable; rerunning the same version is safe.
+No administrator access, Go, or Node.js is required. It upgrades a known older
+RC1–RC3 install after verifying the new archive and binary, but refuses to
+overwrite an unrecognized executable. Rerunning the same version is safe.
 
 Open a **new Terminal tab**, then run `lm version` and follow the
 [first Room walkthrough](first-room.md).
@@ -62,9 +63,9 @@ delete remote Rooms. Keep private grants if you intend to return to them.
 ## Download example: Apple Silicon Mac
 
 ```sh
-curl -fLO https://github.com/v1b3x0r/lm-cli/releases/download/v0.1.0-rc.3/lm-cli_0.1.0-rc.3_darwin_arm64.tar.gz
-curl -fLO https://github.com/v1b3x0r/lm-cli/releases/download/v0.1.0-rc.3/SHA256SUMS
-shasum -a 256 lm-cli_0.1.0-rc.3_darwin_arm64.tar.gz
+curl -fLO https://github.com/v1b3x0r/lm-cli/releases/download/v0.1.0-rc.4/lm-cli_0.1.0-rc.4_darwin_arm64.tar.gz
+curl -fLO https://github.com/v1b3x0r/lm-cli/releases/download/v0.1.0-rc.4/SHA256SUMS
+shasum -a 256 lm-cli_0.1.0-rc.4_darwin_arm64.tar.gz
 ```
 
 Compare the matching checksum before extracting and installing as above.
