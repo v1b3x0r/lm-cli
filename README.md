@@ -80,8 +80,10 @@ address but have no invented Theatre link or claimed access level.
 
 Older grants may initially show an unknown Room ID. Inspect learns and caches
 it when the server offers `world_list`. Create receives it directly from servers
-that include `roomId`; older servers remain usable. Renaming an alias through
-export/import does not change the Room.
+that include `roomId`; older servers remain usable. `lm rename room:my-project better-name`
+changes only the local alias; the Room ID, doors, and saved grant stay the same.
+Use `room:` when a Room and World share a name, or when World inventory is
+unavailable.
 
 ## Agent loop
 

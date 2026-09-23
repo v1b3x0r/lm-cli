@@ -97,7 +97,9 @@ func TestRoomFullOffersPurchaseWithoutPromisingMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, stderr bytes.Buffer
-	if run(newClient(), []string{"world", "--json"}, nil, &out, &stderr) != 0 || !strings.Contains(out.String(), `"roomMigration":false`) {
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "private")
+	if run(c, []string{"world", "--json"}, nil, &out, &stderr) != 0 || !strings.Contains(out.String(), `"roomMigration":false`) {
 		t.Fatal(out.String(), stderr.String())
 	}
 }

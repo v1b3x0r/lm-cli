@@ -215,6 +215,7 @@ const help = `lm — Living Memory from your terminal
   lm logout                       Remove local account credentials
   lm inspect --account [--json]    Inspect your default World (RC3 compatibility)
   lm create <name> --room [--json]  Create and privately save a free Room
+  lm rename <room> <new-name>       Rename a saved local Room alias
   lm list [--json]                 Show local Rooms and signed-in Worlds
   lm inspect [selector] [--json]   Inspect a Space; or read a Room grant from stdin
   lm remember <name> [--json]      Store memory text from stdin
@@ -338,6 +339,28 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 		positional = []string{"@account"}
 	}
 	switch args[0] {
+	case "rename":
+		if room || useAccount || len(positional) != 2 {
+			return fail(errors.New("usage: lm rename <room> <new-name> [--json]"))
+		}
+		alias, _, world, err := c.resolveSelector(positional[0])
+		if err != nil {
+			return fail(err)
+		}
+		if world {
+			return fail(errors.New("rename supports saved local Rooms only"))
+		}
+		if err = c.renameRoom(alias, positional[1]); err != nil {
+			return fail(err)
+		}
+		if asJSON {
+			err = json.NewEncoder(out).Encode(map[string]string{"oldAlias": alias, "alias": positional[1], "next": "lm inspect room:" + positional[1]})
+		} else {
+			_, err = fmt.Fprintf(out, "Room alias renamed: %s → %s\nNext: lm inspect room:%s\n", terminalText(alias), terminalText(positional[1]), terminalText(positional[1]))
+		}
+		if err != nil {
+			return fail(errors.New("Room alias renamed but output failed"))
+		}
 	case "create":
 		if !room || len(positional) != 1 || strings.TrimSpace(positional[0]) == "" || len(positional[0]) > 128 || strings.ContainsAny(positional[0], "\r\n\x1b") {
 			return fail(errors.New("usage: lm create <name> --room [--json] (name: 1–128 bytes)"))

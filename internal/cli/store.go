@@ -96,3 +96,36 @@ func (c Client) load(name string) (Grant, error) {
 	g.Warning = addresses(g.URL, g.ReadOnlyURL).Warning
 	return g, nil
 }
+
+// A Room alias is the private grant filename. Linking before removing the old
+// name makes the new name exclusive without rewriting the grant or its doors.
+func (c Client) renameRoom(oldName, newName string) error {
+	if oldName == newName {
+		return errors.New("Room already has that alias")
+	}
+	g, err := c.load(oldName)
+	if err != nil {
+		return err
+	}
+	if g.Kind != "room" {
+		return errors.New("only a saved local Room can be renamed")
+	}
+	oldPath, err := c.storePath(oldName)
+	if err != nil {
+		return err
+	}
+	newPath, err := c.storePath(newName)
+	if err != nil {
+		return err
+	}
+	if err := os.Link(oldPath, newPath); err != nil {
+		return errors.New("new Room alias already exists or cannot be saved")
+	}
+	if err := os.Remove(oldPath); err != nil {
+		if rollbackErr := os.Remove(newPath); rollbackErr != nil {
+			return errors.New("rename incomplete; check both local aliases before retrying")
+		}
+		return errors.New("cannot remove old Room alias; no alias was changed")
+	}
+	return nil
+}
