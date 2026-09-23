@@ -143,6 +143,32 @@ func TestAccountPrivateStorageAndRoomIsolation(t *testing.T) {
 		t.Fatal("logout retained credential")
 	}
 }
+
+func TestClientRegistrationWithoutTokensIsSignedOut(t *testing.T) {
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "private")
+	c.HTTP = &http.Client{Transport: rejectRequests{t}}
+	registration := account{ClientID: "registered-client", Redirect: "http://127.0.0.1:61292/callback"}
+	if err := c.saveAccount(registration); err != nil {
+		t.Fatal(err)
+	}
+	code, out, stderr := invokeTest(c, "", "list", "--json")
+	if code != 0 || stderr != "" || !strings.Contains(out, `"remoteStatus":"signed_out"`) || strings.Contains(out, "registered-client") {
+		t.Fatal(code, out, stderr)
+	}
+	code, out, stderr = invokeTest(c, "", "world", "--json")
+	if code != 0 || stderr != "" || !strings.Contains(out, `"status":"signed_out"`) || !strings.Contains(out, `"next":"lm login"`) {
+		t.Fatal(code, out, stderr)
+	}
+	code, out, stderr = invokeTest(c, "", "inspect", "--account")
+	if code == 0 || out != "" || !strings.Contains(stderr, "run lm login") {
+		t.Fatal(code, out, stderr)
+	}
+	saved, err := c.readAccount()
+	if err != nil || saved.ClientID != registration.ClientID || saved.Redirect != registration.Redirect {
+		t.Fatal("registration was lost instead of retained for login", err)
+	}
+}
 func TestOAuthRejectsRedirect(t *testing.T) {
 	c := newClient()
 	requests := 0

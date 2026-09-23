@@ -35,6 +35,12 @@ type account struct {
 	Expires  time.Time `json:"expiresAt"`
 }
 
+// A saved OAuth client registration is reusable for login, but it is not an
+// authenticated account until it has a usable access or refresh token.
+func (a account) signedIn() bool {
+	return a.Refresh != "" || (a.Access != "" && time.Until(a.Expires) >= 30*time.Second)
+}
+
 // Separate from *.grant.json: Room listing/export never sees OAuth credentials.
 func (c Client) accountPath() (string, error) {
 	if _, err := c.storePath("check"); err != nil {

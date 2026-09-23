@@ -70,6 +70,9 @@ func (c Client) accountSpacesIfSaved() (accountInventory, string) {
 	if err != nil {
 		return accountInventory{}, err.Error()
 	}
+	if !a.signedIn() {
+		return accountInventory{Spaces: []Space{}}, "signed_out"
+	}
 	inv, err := c.fetchSpaces(&a)
 	if err != nil {
 		return accountInventory{}, err.Error()
@@ -265,6 +268,9 @@ func (c Client) world(out, stderr io.Writer, asJSON bool) int {
 	a, err := c.readAccount()
 	if err != nil {
 		return fail(err)
+	}
+	if !a.signedIn() {
+		return worldDirection(out, stderr, asJSON, "signed_out")
 	}
 	inv, err := c.fetchSpaces(&a)
 	if err != nil {

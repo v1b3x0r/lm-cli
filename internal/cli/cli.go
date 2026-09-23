@@ -319,6 +319,9 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 		if err != nil {
 			return fail(err)
 		}
+		if !a.signedIn() {
+			return fail(errors.New("not signed in; run lm login"))
+		}
 		if selectedWorldID != "" {
 			inv, e := c.fetchSpaces(&a)
 			if e != nil {
