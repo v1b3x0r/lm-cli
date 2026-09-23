@@ -151,6 +151,13 @@ kill -TERM "$PPID"
         (p.parent/'.lm-install.lock').mkdir()
         self.run_install(False)
         self.assertEqual(p.read_text(),'keep me')
+    def test_signal_during_lock_acquisition_leaves_no_lock(self):
+        self.tool('mkdir','''#!/bin/sh
+/bin/mkdir "$@" || exit
+case "$*" in *'.lm-install.lock'*) kill -TERM "$PPID";; esac
+''')
+        self.run_install()
+        self.assertFalse((self.root/'.local/bin/.lm-install.lock').exists())
     def test_other_lm_on_path(self):
         self.tool('lm','#!/bin/sh\nexit 0\n'); self.run_install(False)
         self.assertFalse(self.root.exists())

@@ -54,7 +54,7 @@ chmod 755 "$work/lm"
 [ "$("$work/lm" version)" = "$VERSION" ] || fail 'Downloaded executable could not report the expected version.'
 mkdir -p "$bindir"
 install_lock=$bindir/.lm-install.lock
-mkdir -m 700 "$install_lock" 2>/dev/null || fail 'Another lm installation is running, or its lock remains. Nothing changed.'
+lock_owned=0
 stage=
 backup_dir=
 cleanup() {
@@ -68,10 +68,15 @@ cleanup() {
     fi
   fi
   [ -z "$stage" ] || rm -f "$stage"
-  rmdir "$install_lock" 2>/dev/null || true
+  [ "$lock_owned" -eq 0 ] || rmdir "$install_lock" 2>/dev/null || true
   rm -rf "$work"
 }
 trap cleanup EXIT
+# Ignore catchable signals only across lock acquisition and ownership assignment.
+trap '' HUP INT TERM
+mkdir -m 700 "$install_lock" 2>/dev/null || fail 'Another lm installation is running, or its lock remains. Nothing changed.'
+lock_owned=1
+trap 'exit 1' HUP INT TERM
 if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
   [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || fail "A different file exists at $bindir/lm. Nothing overwritten."
   if cmp -s "$work/lm" "$bindir/lm"; then
