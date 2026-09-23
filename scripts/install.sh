@@ -68,7 +68,7 @@ restore_displaced() {
   if [ -L "$backup_dir/lm" ]; then
     target=$(link_text "$backup_dir/lm") || return 1
     target=${target%.}
-    ln -s "$target" "$bindir/lm" 2>/dev/null || return 1
+    ln -s -- "$target" "$bindir/lm" 2>/dev/null || return 1
     if ! { [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$target." ]; }; then
       name=$target
       while [ "${name%/}" != "$name" ]; do name=${name%/}; done
@@ -92,7 +92,7 @@ restore_displaced() {
     rmdir "$backup_dir"
   elif [ -d "$backup_dir/lm" ]; then
     # A directory cannot be hard-linked; keep it at the backup path.
-    ln -s "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
+    ln -s -- "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
     if ! { [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$backup_dir/lm." ]; }; then
       nested=$bindir/lm/lm
       if [ -d "$bindir/lm" ] && [ -L "$nested" ] && [ "$(link_text "$nested")" = "$backup_dir/lm." ]; then rm -f "$nested"; fi
@@ -123,7 +123,10 @@ publish_stage() {
     return 0
   fi
   # ln may have succeeded *inside* a directory that raced into the target path.
-  if [ -d "$bindir/lm" ]; then rm -f "$bindir/lm/${stage##*/}"; fi
+  if [ -d "$bindir/lm" ]; then
+    nested=$bindir/lm/${stage##*/}
+    if [ -f "$nested" ] && [ ! -L "$nested" ] && [ "$stage" -ef "$nested" ]; then rm -f "$nested"; fi
+  fi
   return 1
 }
 if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then

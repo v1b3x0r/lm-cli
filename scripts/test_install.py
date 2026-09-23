@@ -156,6 +156,21 @@ exec /bin/mv "$@"
         self.assertTrue(p.is_symlink())
         self.assertEqual(os.readlink(p),self.env['REPLACEMENT_TARGET'])
         self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_symlink_target_beginning_with_dash_is_restored(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  rm -f "$1"
+  /bin/ln -s -- '-replacement' "$1"
+fi
+exec /bin/mv "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_symlink())
+        self.assertEqual(os.readlink(p),'-replacement')
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
     def test_directory_replacement_before_move_remains_reachable(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
@@ -206,8 +221,8 @@ fi
 exec /bin/mv "$@"
 ''')
         self.tool('ln','''#!/bin/sh
-if [ "$1" = "-s" ] && [ "$3" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
-  /bin/mkdir "$3"
+if [ "$1" = "-s" ] && [ "$4" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  /bin/mkdir "$4"
 fi
 exec /bin/ln "$@"
 ''')
@@ -239,6 +254,23 @@ exec /bin/ln "$@"
         dest=self.root/'.local/bin/lm'
         self.assertTrue(dest.is_dir())
         self.assertEqual(list(dest.iterdir()),[])
+    def test_directory_race_preserves_replaced_nested_file(self):
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  /bin/mkdir "$2"
+  /bin/ln "$@" || exit
+  nested="$2/$(basename "$1")"
+  rm -f "$nested"
+  printf 'concurrent\\n' > "$nested"
+  exit 0
+fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        dest=self.root/'.local/bin/lm'
+        nested=list(dest.iterdir())
+        self.assertEqual(len(nested),1)
+        self.assertEqual(nested[0].read_text(),'concurrent\n')
     def test_symlink_directory_race_does_not_report_new_install(self):
         target=self.base/'other-directory'; target.mkdir()
         self.env['RACE_DIRECTORY']=str(target)
