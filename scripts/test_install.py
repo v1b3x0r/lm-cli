@@ -46,13 +46,13 @@ cp "$FIXTURES/${url##*/}" "$dest"
         p=subprocess.run(['/bin/sh',str(SCRIPT)],env=self.env,text=True,capture_output=True)
         self.assertEqual(p.returncode==0,success,p.stdout+p.stderr)
         return p
-    def trust_fixture_as_rc3(self,p):
+    def trust_fixture_as_rc3(self,p, official_hash='003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b'):
         (self.base/'old-lm').write_bytes(p.read_bytes())
         real_shasum=shutil.which('shasum')
         if not real_shasum: self.skipTest('shasum is unavailable')
         self.tool('shasum',f'''#!/bin/sh
 if cmp -s "$3" "$FIXTURES/old-lm"; then
-  printf '%s  %s\\n' '003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b' "$3"
+  printf '%s  %s\\n' '{official_hash}' "$3"
 else
   exec {shlex.quote(real_shasum)} "$@"
 fi
@@ -85,6 +85,12 @@ fi
         self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
         self.assertEqual(list(p.parent.glob('.lm-install.*')),[])
         self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_upgrade_prior_binary_from_another_architecture(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p, '7ce80da1c04283ba5ec1641df0a4684175190421855feef3ff77cc92e855c40d')
+        self.run_install()
+        self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
     def test_changed_entry_before_move_is_restored(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)

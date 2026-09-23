@@ -84,19 +84,19 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
   else
     previous_hash=$(file_hash "$bindir/lm")
     # Hashes of the extracted official release binaries, grouped by version.
-    case "$platform/$arch:$previous_hash" in
-      darwin/amd64:5f4edb126971308fd3bd84c685c9db35ea7c1c6ce96ac2ae1cbc5a96482b3a69|\
-      darwin/arm64:5d9c3260bc7bc2ffcf0555c5f5e83e9488398d3a9fadbf0bf115afc74a6ff720|\
-      linux/amd64:fe06daf508ef6939e664f37efb4b34aa840eaf7f79b23236ad44fa7a3e521012|\
-      linux/arm64:5bad3ef05963128724efa40c1b91cb00430f06b978ce43059812186633459f7d) previous=0.1.0-rc.1 ;;
-      darwin/amd64:8c610c8dccccfd4b41bcd0e59f1d86df480b246a15b6feee00fe8fa7411665d2|\
-      darwin/arm64:94f65d7bd017d34730742bcbcc0bb3dbdeafb4ef9261b62aa183fcff20bf5848|\
-      linux/amd64:fa7ebdc97b98c6866006565402ac27172a98e446c869ccdd0208a3af5354d924|\
-      linux/arm64:10aa94b20d6fb626c84f71f77f0010ecc6362760bbe9dfcc1606ff68b075a40f) previous=0.1.0-rc.2 ;;
-      darwin/amd64:305b20ec7bbee5e69318f34b933a9ee83cf7b1b9751ffbc16ecbb149948219f5|\
-      darwin/arm64:003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b|\
-      linux/amd64:7ce80da1c04283ba5ec1641df0a4684175190421855feef3ff77cc92e855c40d|\
-      linux/arm64:35908c5e6640a0cc6d726b023e527df7d5ff56390aff01572390deadfddb43ac) previous=0.1.0-rc.3 ;;
+    case "$previous_hash" in
+      5f4edb126971308fd3bd84c685c9db35ea7c1c6ce96ac2ae1cbc5a96482b3a69|\
+      5d9c3260bc7bc2ffcf0555c5f5e83e9488398d3a9fadbf0bf115afc74a6ff720|\
+      fe06daf508ef6939e664f37efb4b34aa840eaf7f79b23236ad44fa7a3e521012|\
+      5bad3ef05963128724efa40c1b91cb00430f06b978ce43059812186633459f7d) previous=0.1.0-rc.1 ;;
+      8c610c8dccccfd4b41bcd0e59f1d86df480b246a15b6feee00fe8fa7411665d2|\
+      94f65d7bd017d34730742bcbcc0bb3dbdeafb4ef9261b62aa183fcff20bf5848|\
+      fa7ebdc97b98c6866006565402ac27172a98e446c869ccdd0208a3af5354d924|\
+      10aa94b20d6fb626c84f71f77f0010ecc6362760bbe9dfcc1606ff68b075a40f) previous=0.1.0-rc.2 ;;
+      305b20ec7bbee5e69318f34b933a9ee83cf7b1b9751ffbc16ecbb149948219f5|\
+      003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b|\
+      7ce80da1c04283ba5ec1641df0a4684175190421855feef3ff77cc92e855c40d|\
+      35908c5e6640a0cc6d726b023e527df7d5ff56390aff01572390deadfddb43ac) previous=0.1.0-rc.3 ;;
       *) fail "An unrecognized lm exists at $bindir/lm. Nothing overwritten." ;;
     esac
     [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] &&
