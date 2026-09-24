@@ -2,11 +2,10 @@
 # Install the official lm release without administrator access.
 set -eu
 main() {
-VERSION=0.1.0-rc.3
-# RC3 was published with this tag; asset names and binary version use VERSION.
-RELEASE_TAG=v0.1.0-rc-3
+VERSION=0.1.0-rc.4
+RELEASE_TAG=v0.1.0-rc.4
 fail() { printf 'lm install: %s\n' "$*" >&2; exit 1; }
-for tool in curl tar awk mktemp install cmp; do
+for tool in curl tar awk mktemp install cmp mv readlink; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command missing: $tool"
 done
 case "$(uname -s)" in Darwin) platform=darwin ;; Linux) platform=linux ;; *) fail 'Supported systems: macOS and Linux.' ;; esac
@@ -42,22 +41,136 @@ curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 15 --max-time 60 "$base/
 expected=$(awk -v name="$archive" '$2 == name { print $1; n++ } END { if (n != 1) exit 1 }' "$work/SHA256SUMS") || fail 'Release checksum entry missing or duplicated.'
 [ "${#expected}" -eq 64 ] || fail 'Invalid release checksum.'
 case "$expected" in *[!0-9a-f]*) fail 'Invalid release checksum.' ;; esac
-if [ "$hash_tool" = shasum ]; then actual=$(shasum -a 256 "$work/$archive" | awk '{print $1}')
-else actual=$(sha256sum "$work/$archive" | awk '{print $1}'); fi
+file_hash() {
+  if [ "$hash_tool" = shasum ]; then shasum -a 256 "$1" | awk '{print $1}'
+  else sha256sum "$1" | awk '{print $1}'; fi
+}
+actual=$(file_hash "$work/$archive")
 [ "$actual" = "$expected" ] || fail 'Checksum did not match. Nothing installed.'
 # Extract only the executable, never documentation or arbitrary archive paths.
 tar -xzf "$work/$archive" -C "$work" lm
 [ -f "$work/lm" ] && [ ! -L "$work/lm" ] || fail 'Release does not contain a regular lm executable.'
 chmod 755 "$work/lm"
 [ "$("$work/lm" version)" = "$VERSION" ] || fail 'Downloaded executable could not report the expected version.'
+mkdir -p "$bindir"
+install_lock=$bindir/.lm-install.lock
+lock_owned=0
+stage=
+backup_dir=
+link_text() {
+  readlink -n "$1" || return 1
+  # Sentinel keeps trailing newlines intact through command substitution.
+  printf .
+}
+restore_displaced() {
+  [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ] || return 1
+  [ ! -e "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || return 1
+  if [ -L "$backup_dir/lm" ]; then
+    target=$(link_text "$backup_dir/lm") || return 1
+    target=${target%.}
+    ln -s -- "$target" "$bindir/lm" 2>/dev/null || return 1
+    [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$target." ] || return 1
+    rm -f "$backup_dir/lm"
+    rmdir "$backup_dir"
+  elif [ -f "$backup_dir/lm" ]; then
+    ln "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
+    if ! { [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && [ "$backup_dir/lm" -ef "$bindir/lm" ]; }; then
+      nested=$bindir/lm/lm
+      if [ -d "$bindir/lm" ] && [ -f "$nested" ] && [ ! -L "$nested" ] && [ "$backup_dir/lm" -ef "$nested" ]; then rm -f "$nested"; fi
+      return 1
+    fi
+    rm -f "$backup_dir/lm"
+    rmdir "$backup_dir"
+  elif [ -d "$backup_dir/lm" ]; then
+    # A directory cannot be hard-linked; keep it at the backup path.
+    ln -s -- "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
+    [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$backup_dir/lm." ] || return 1
+  else
+    return 1
+  fi
+}
+cleanup() {
+  # A signal may arrive after the old entry moves but before RC4 is linked.
+  if [ -n "$backup_dir" ] && { [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; }; then
+    restore_displaced || true
+  fi
+  [ -z "$stage" ] || rm -f "$stage"
+  [ "$lock_owned" -eq 0 ] || rmdir "$install_lock" 2>/dev/null || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+# Ignore catchable signals only across lock acquisition and ownership assignment.
+trap '' HUP INT TERM
+mkdir -m 700 "$install_lock" 2>/dev/null || fail 'Another lm installation is running, or its lock remains. Nothing changed.'
+lock_owned=1
+trap 'exit 1' HUP INT TERM
+publish_stage() {
+  ln "$stage" "$bindir/lm" || return 1
+  if [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && [ "$stage" -ef "$bindir/lm" ]; then
+    return 0
+  fi
+  # ln may have succeeded *inside* a directory that raced into the target path.
+  if [ -d "$bindir/lm" ]; then
+    nested=$bindir/lm/${stage##*/}
+    if [ -f "$nested" ] && [ ! -L "$nested" ] && [ "$stage" -ef "$nested" ]; then rm -f "$nested"; fi
+  fi
+  return 1
+}
 if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
-  [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && cmp -s "$work/lm" "$bindir/lm" || fail "A different file exists at $bindir/lm. Nothing overwritten."
-  printf 'lm %s is already installed.\n' "$VERSION"
+  [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] || fail "A different file exists at $bindir/lm. Nothing overwritten."
+  if cmp -s "$work/lm" "$bindir/lm"; then
+    printf 'lm %s is already installed.\n' "$VERSION"
+  else
+    previous_hash=$(file_hash "$bindir/lm")
+    # Hashes of the extracted official release binaries, grouped by version.
+    case "$previous_hash" in
+      5f4edb126971308fd3bd84c685c9db35ea7c1c6ce96ac2ae1cbc5a96482b3a69|\
+      5d9c3260bc7bc2ffcf0555c5f5e83e9488398d3a9fadbf0bf115afc74a6ff720|\
+      fe06daf508ef6939e664f37efb4b34aa840eaf7f79b23236ad44fa7a3e521012|\
+      5bad3ef05963128724efa40c1b91cb00430f06b978ce43059812186633459f7d) previous=0.1.0-rc.1 ;;
+      8c610c8dccccfd4b41bcd0e59f1d86df480b246a15b6feee00fe8fa7411665d2|\
+      94f65d7bd017d34730742bcbcc0bb3dbdeafb4ef9261b62aa183fcff20bf5848|\
+      fa7ebdc97b98c6866006565402ac27172a98e446c869ccdd0208a3af5354d924|\
+      10aa94b20d6fb626c84f71f77f0010ecc6362760bbe9dfcc1606ff68b075a40f) previous=0.1.0-rc.2 ;;
+      305b20ec7bbee5e69318f34b933a9ee83cf7b1b9751ffbc16ecbb149948219f5|\
+      003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b|\
+      7ce80da1c04283ba5ec1641df0a4684175190421855feef3ff77cc92e855c40d|\
+      35908c5e6640a0cc6d726b023e527df7d5ff56390aff01572390deadfddb43ac) previous=0.1.0-rc.3 ;;
+      *) fail "An unrecognized lm exists at $bindir/lm. Nothing overwritten." ;;
+    esac
+    [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] &&
+      [ "$(file_hash "$bindir/lm")" = "$previous_hash" ] || fail 'Existing lm changed during installation. Nothing overwritten.'
+    stage=$(mktemp "$bindir/.lm-install.XXXXXX")
+    install -m 755 "$work/lm" "$stage" || { rm -f "$stage"; fail 'Could not stage lm upgrade.'; }
+    backup_dir=$(mktemp -d "$bindir/.lm-previous.XXXXXX")
+    restore_or_preserve() {
+      rm -f "$stage"
+      if restore_displaced; then
+        fail "$1 Previous entry restored."
+      fi
+      fail "$1 Displaced executable preserved at $backup_dir/lm."
+    }
+    # Move first, then verify the displaced entry; never overwrite a new arrival.
+    if ! mv "$bindir/lm" "$backup_dir/lm"; then
+      if [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; then
+        restore_or_preserve 'Could not move existing lm.'
+      fi
+      rm -f "$stage"
+      rmdir "$backup_dir"
+      fail 'Could not move existing lm. Nothing overwritten.'
+    fi
+    [ -f "$backup_dir/lm" ] && [ ! -L "$backup_dir/lm" ] &&
+      [ "$(file_hash "$backup_dir/lm")" = "$previous_hash" ] || restore_or_preserve 'Existing lm changed during installation.'
+    publish_stage || restore_or_preserve 'Another entry appeared during installation.'
+    rm -f "$stage"
+    cmp -s "$work/lm" "$bindir/lm" || fail "Installed path changed; previous executable preserved at $backup_dir/lm."
+    printf 'Upgraded lm from %s to %s.\n' "$previous" "$VERSION"
+    printf 'Previous executable saved at %s/lm.\n' "$backup_dir"
+  fi
 else
-  mkdir -p "$bindir"
   # A hard link publishes a complete file and refuses a concurrent overwrite.
   stage=$(mktemp "$bindir/.lm-install.XXXXXX")
-  if install -m 755 "$work/lm" "$stage" && ln "$stage" "$bindir/lm"; then rm -f "$stage"
+  if install -m 755 "$work/lm" "$stage" && publish_stage; then rm -f "$stage"
   else rm -f "$stage"; fail 'Could not install lm without overwriting an existing file.'; fi
 fi
 quoted=$(printf '%s' "$bindir" | sed "s/'/'\\\\''/g")

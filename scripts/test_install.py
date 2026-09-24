@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Exercise installer failure boundaries without touching the owner's shell config."""
-import hashlib, io, os, pathlib, subprocess, tarfile, tempfile, unittest
+import hashlib, io, os, pathlib, shlex, shutil, subprocess, tarfile, tempfile, unittest
 SCRIPT = pathlib.Path(__file__).with_name('install.sh').resolve()
-VERSION = '0.1.0-rc.3'
-RELEASE_TAG = 'v0.1.0-rc-3'
+VERSION = '0.1.0-rc.4'
+RELEASE_TAG = 'v0.1.0-rc.4'
 RELEASE_BASE = f'https://github.com/v1b3x0r/lm-cli/releases/download/{RELEASE_TAG}'
 class Installer(unittest.TestCase):
     def setUp(self):
@@ -32,7 +32,7 @@ cp "$FIXTURES/${url##*/}" "$dest"
 ''')
         for system, arch in [('darwin','arm64'), ('darwin','amd64'), ('linux','arm64'), ('linux','amd64')]:
             name=f'lm-cli_{VERSION}_{system}_{arch}.tar.gz'
-            data=b'#!/bin/sh\necho 0.1.0-rc.3\n'
+            data=f'#!/bin/sh\necho {VERSION}\n'.encode()
             with tarfile.open(self.base/name,'w:gz') as tf:
                 info=tarfile.TarInfo('lm'); info.mode=0o755; info.size=len(data)
                 tf.addfile(info, io.BytesIO(data))
@@ -46,6 +46,17 @@ cp "$FIXTURES/${url##*/}" "$dest"
         p=subprocess.run(['/bin/sh',str(SCRIPT)],env=self.env,text=True,capture_output=True)
         self.assertEqual(p.returncode==0,success,p.stdout+p.stderr)
         return p
+    def trust_fixture_as_rc3(self,p, official_hash='003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b'):
+        (self.base/'old-lm').write_bytes(p.read_bytes())
+        real_shasum=shutil.which('shasum')
+        if not real_shasum: self.skipTest('shasum is unavailable')
+        self.tool('shasum',f'''#!/bin/sh
+if cmp -s "$3" "$FIXTURES/old-lm"; then
+  printf '%s  %s\\n' '{official_hash}' "$3"
+else
+  exec {shlex.quote(real_shasum)} "$@"
+fi
+''')
     def test_install_repeat_and_new_zsh(self):
         self.run_install(); self.run_install()
         profile=self.root/'.zshrc'
@@ -65,6 +76,285 @@ cp "$FIXTURES/${url##*/}" "$dest"
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True); p.write_text('keep me')
         self.run_install(False); self.assertEqual(p.read_text(),'keep me')
         self.assertFalse((self.root/'.zshrc').exists())
+    def test_upgrade_known_rc3_binary(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        old=b'#!/bin/sh\necho 0.1.0-rc.3\n'
+        p.write_bytes(old); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        result=self.run_install()
+        self.assertIn(f'Upgraded lm from 0.1.0-rc.3 to {VERSION}', result.stdout)
+        self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
+        self.assertEqual(list(p.parent.glob('.lm-install.*')),[])
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_bytes(),old)
+        self.assertIn(str(backups[0]),result.stdout)
+    def test_upgrade_prior_binary_from_another_architecture(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p, '7ce80da1c04283ba5ec1641df0a4684175190421855feef3ff77cc92e855c40d')
+        self.run_install()
+        self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
+    def test_late_in_place_update_keeps_displaced_inode(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('ln','''#!/bin/sh
+/bin/ln "$@" || exit
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  for old in "$LM_INSTALL_HOME"/.local/bin/.lm-previous.*/lm; do
+    printf 'concurrent\\n' >> "$old"
+  done
+fi
+''')
+        self.run_install()
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertTrue(backups[0].read_bytes().endswith(b'concurrent\n'))
+        self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
+    def test_changed_entry_before_move_is_restored(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then printf 'concurrent\\n' > "$1"; fi
+exec /bin/mv "$@"
+''')
+        self.run_install(False)
+        self.assertEqual(p.read_text(),'concurrent\n')
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_symlink_replacement_before_move_is_restored(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        target=self.base/'replacement'; target.write_text('concurrent\n')
+        self.env['REPLACEMENT_TARGET']=str(target)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  rm -f "$1"
+  ln -s "$REPLACEMENT_TARGET" "$1"
+fi
+exec /bin/mv "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_symlink())
+        self.assertEqual(p.resolve(),target.resolve())
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_symlink_target_trailing_newline_is_restored_exactly(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.env['REPLACEMENT_TARGET']=str(self.base/'target')+'\n'
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  rm -f "$1"
+  /bin/ln -s "$REPLACEMENT_TARGET" "$1"
+fi
+exec /bin/mv "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_symlink())
+        self.assertEqual(os.readlink(p),self.env['REPLACEMENT_TARGET'])
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_symlink_target_beginning_with_dash_is_restored(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  rm -f "$1"
+  /bin/ln -s -- '-replacement' "$1"
+fi
+exec /bin/mv "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_symlink())
+        self.assertEqual(os.readlink(p),'-replacement')
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+    def test_directory_replacement_before_move_remains_reachable(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  rm -f "$1"
+  /bin/mkdir "$1"
+  printf 'concurrent\n' > "$1/marker"
+fi
+exec /bin/mv "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_symlink())
+        self.assertEqual((p/'marker').read_text(),'concurrent\n')
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(p.resolve(),backups[0].resolve())
+    def test_restoration_directory_race_removes_nested_hardlink(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then printf 'concurrent\\n' > "$1"; fi
+exec /bin/mv "$@"
+''')
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then /bin/mkdir "$2"; fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_dir())
+        self.assertEqual(list(p.iterdir()),[])
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_text(),'concurrent\n')
+    def test_restoration_directory_race_preserves_equal_bytes_replacement(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then printf 'concurrent\\n' > "$1"; fi
+exec /bin/mv "$@"
+''')
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  /bin/mkdir "$2"
+  /bin/ln "$@" || exit
+  rm -f "$2/lm"
+  cp "$1" "$2/lm"
+  exit 0
+fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_dir())
+        self.assertEqual((p/'lm').read_text(),'concurrent\n')
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertFalse(os.stat(p/'lm').st_ino == os.stat(backups[0]).st_ino)
+    def test_restoration_directory_race_preserves_nested_symlink(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        target=self.base/'replacement'; target.write_text('concurrent\n')
+        self.env['REPLACEMENT_TARGET']=str(target)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  rm -f "$1"
+  /bin/ln -s "$REPLACEMENT_TARGET" "$1"
+fi
+exec /bin/mv "$@"
+''')
+        self.tool('ln','''#!/bin/sh
+if [ "$1" = "-s" ] && [ "$4" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  /bin/mkdir "$4"
+fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_dir())
+        self.assertTrue((p/'replacement').is_symlink())
+        self.assertEqual(os.readlink(p/'replacement'),str(target))
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertTrue(backups[0].is_symlink())
+    def test_new_entry_after_move_is_not_overwritten(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        old=b'#!/bin/sh\necho 0.1.0-rc.3\n'; p.write_bytes(old); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then printf 'concurrent\\n' > "$2"; fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        self.assertEqual(p.read_text(),'concurrent\n')
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_bytes(),old)
+    def test_directory_race_does_not_report_new_install(self):
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then /bin/mkdir "$2"; fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        dest=self.root/'.local/bin/lm'
+        self.assertTrue(dest.is_dir())
+        self.assertEqual(list(dest.iterdir()),[])
+    def test_directory_race_preserves_replaced_nested_file(self):
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  /bin/mkdir "$2"
+  /bin/ln "$@" || exit
+  nested="$2/$(basename "$1")"
+  rm -f "$nested"
+  printf 'concurrent\\n' > "$nested"
+  exit 0
+fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        dest=self.root/'.local/bin/lm'
+        nested=list(dest.iterdir())
+        self.assertEqual(len(nested),1)
+        self.assertEqual(nested[0].read_text(),'concurrent\n')
+    def test_symlink_directory_race_does_not_report_new_install(self):
+        target=self.base/'other-directory'; target.mkdir()
+        self.env['RACE_DIRECTORY']=str(target)
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  /bin/ln -s "$RACE_DIRECTORY" "$2"
+fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        dest=self.root/'.local/bin/lm'
+        self.assertTrue(dest.is_symlink())
+        self.assertEqual(list(target.iterdir()),[])
+    def test_directory_race_preserves_prior_upgrade(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        old=b'#!/bin/sh\necho 0.1.0-rc.3\n'; p.write_bytes(old); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then /bin/mkdir "$2"; fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_dir())
+        self.assertEqual(list(p.iterdir()),[])
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertEqual(backups[0].read_bytes(),old)
+    def test_signal_after_move_restores_previous_binary(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        old=b'#!/bin/sh\necho 0.1.0-rc.3\n'; p.write_bytes(old); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+/bin/mv "$@" || exit
+kill -TERM "$PPID"
+''')
+        self.run_install(False)
+        self.assertEqual(p.read_bytes(),old)
+        self.assertEqual(list(p.parent.glob('.lm-previous.*')),[])
+        self.assertFalse((p.parent/'.lm-install.lock').exists())
+    def test_version_spoof_is_not_executed_or_overwritten(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        data=b'#!/bin/sh\ntouch "$FIXTURES/executed"\necho 0.1.0-rc.3\n'
+        p.write_bytes(data); p.chmod(0o755)
+        self.run_install(False)
+        self.assertEqual(p.read_bytes(),data)
+        self.assertFalse((self.base/'executed').exists())
+    def test_existing_install_lock_preserves_binary(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('keep me')
+        (p.parent/'.lm-install.lock').mkdir()
+        self.run_install(False)
+        self.assertEqual(p.read_text(),'keep me')
+    def test_signal_during_lock_acquisition_leaves_no_lock(self):
+        self.tool('mkdir','''#!/bin/sh
+/bin/mkdir "$@" || exit
+case "$*" in *'.lm-install.lock'*) kill -TERM "$PPID";; esac
+''')
+        self.run_install()
+        self.assertFalse((self.root/'.local/bin/.lm-install.lock').exists())
     def test_other_lm_on_path(self):
         self.tool('lm','#!/bin/sh\nexit 0\n'); self.run_install(False)
         self.assertFalse(self.root.exists())
