@@ -207,7 +207,31 @@ exec /bin/ln "$@"
         backups=list(p.parent.glob('.lm-previous.*/lm'))
         self.assertEqual(len(backups),1)
         self.assertEqual(backups[0].read_text(),'concurrent\n')
-    def test_restoration_directory_race_removes_nested_symlink(self):
+    def test_restoration_directory_race_preserves_equal_bytes_replacement(self):
+        p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
+        p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
+        self.trust_fixture_as_rc3(p)
+        self.tool('mv','''#!/bin/sh
+if [ "$1" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then printf 'concurrent\\n' > "$1"; fi
+exec /bin/mv "$@"
+''')
+        self.tool('ln','''#!/bin/sh
+if [ "$2" = "$LM_INSTALL_HOME/.local/bin/lm" ]; then
+  /bin/mkdir "$2"
+  /bin/ln "$@" || exit
+  rm -f "$2/lm"
+  cp "$1" "$2/lm"
+  exit 0
+fi
+exec /bin/ln "$@"
+''')
+        self.run_install(False)
+        self.assertTrue(p.is_dir())
+        self.assertEqual((p/'lm').read_text(),'concurrent\n')
+        backups=list(p.parent.glob('.lm-previous.*/lm'))
+        self.assertEqual(len(backups),1)
+        self.assertFalse(os.stat(p/'lm').st_ino == os.stat(backups[0]).st_ino)
+    def test_restoration_directory_race_preserves_nested_symlink(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
         self.trust_fixture_as_rc3(p)
@@ -228,7 +252,8 @@ exec /bin/ln "$@"
 ''')
         self.run_install(False)
         self.assertTrue(p.is_dir())
-        self.assertEqual(list(p.iterdir()),[])
+        self.assertTrue((p/'replacement').is_symlink())
+        self.assertEqual(os.readlink(p/'replacement'),str(target))
         backups=list(p.parent.glob('.lm-previous.*/lm'))
         self.assertEqual(len(backups),1)
         self.assertTrue(backups[0].is_symlink())

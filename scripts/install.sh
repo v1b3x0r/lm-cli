@@ -69,23 +69,14 @@ restore_displaced() {
     target=$(link_text "$backup_dir/lm") || return 1
     target=${target%.}
     ln -s -- "$target" "$bindir/lm" 2>/dev/null || return 1
-    if ! { [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$target." ]; }; then
-      name=$target
-      while [ "${name%/}" != "$name" ]; do name=${name%/}; done
-      name=${name##*/}
-      if [ -n "$name" ]; then
-        nested=$bindir/lm/$name
-        if [ -d "$bindir/lm" ] && [ -L "$nested" ] && [ "$(link_text "$nested")" = "$target." ]; then rm -f "$nested"; fi
-      fi
-      return 1
-    fi
+    [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$target." ] || return 1
     rm -f "$backup_dir/lm"
     rmdir "$backup_dir"
   elif [ -f "$backup_dir/lm" ]; then
     ln "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
-    if ! { [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && cmp -s "$backup_dir/lm" "$bindir/lm"; }; then
+    if ! { [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && [ "$backup_dir/lm" -ef "$bindir/lm" ]; }; then
       nested=$bindir/lm/lm
-      if [ -d "$bindir/lm" ] && [ -f "$nested" ] && [ ! -L "$nested" ] && cmp -s "$backup_dir/lm" "$nested"; then rm -f "$nested"; fi
+      if [ -d "$bindir/lm" ] && [ -f "$nested" ] && [ ! -L "$nested" ] && [ "$backup_dir/lm" -ef "$nested" ]; then rm -f "$nested"; fi
       return 1
     fi
     rm -f "$backup_dir/lm"
@@ -93,11 +84,7 @@ restore_displaced() {
   elif [ -d "$backup_dir/lm" ]; then
     # A directory cannot be hard-linked; keep it at the backup path.
     ln -s -- "$backup_dir/lm" "$bindir/lm" 2>/dev/null || return 1
-    if ! { [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$backup_dir/lm." ]; }; then
-      nested=$bindir/lm/lm
-      if [ -d "$bindir/lm" ] && [ -L "$nested" ] && [ "$(link_text "$nested")" = "$backup_dir/lm." ]; then rm -f "$nested"; fi
-      return 1
-    fi
+    [ -L "$bindir/lm" ] && [ "$(link_text "$bindir/lm")" = "$backup_dir/lm." ] || return 1
   else
     return 1
   fi
@@ -119,7 +106,7 @@ lock_owned=1
 trap 'exit 1' HUP INT TERM
 publish_stage() {
   ln "$stage" "$bindir/lm" || return 1
-  if [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && cmp -s "$stage" "$bindir/lm"; then
+  if [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] && [ "$stage" -ef "$bindir/lm" ]; then
     return 0
   fi
   # ln may have succeeded *inside* a directory that raced into the target path.
