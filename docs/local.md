@@ -1,7 +1,6 @@
-# Local memory (RC5 candidate)
+# Local memory (RC5)
 
-This source targets `0.1.0-rc.5` and `@nature-labs/living-memory-mcp@0.1.3`.
-Publication is pending; the public installer still serves RC4.
+CLI `0.1.0-rc.5` uses `@nature-labs/living-memory-mcp@0.1.3`.
 
 ## Start
 

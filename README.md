@@ -2,12 +2,12 @@
 
 Local memory on your device, or a shared Room/World your agents can return to.
 
-**RC5 candidate: not yet published. The public installer remains RC4 until release.**
+**RC5 prerelease: local memory with configured embeddings or explicit offline lexical retrieval.**
 
 ## Your first Local
 
 Local commands require Node >=20.12 and npm; Room/World commands use the Go
-binary alone. Build this checkout first while the release is pending.
+binary alone. Install the CLI using the command below.
 
 ```sh
 lm setup local
@@ -45,7 +45,7 @@ macOS or Linux:
 curl -fsSL https://living-memory-cli.pages.dev/install.sh | sh
 ```
 
-Open a new Terminal tab and run `lm version`. The staged RC5 installer targets
+Open a new Terminal tab and run `lm version`. The RC5 installer targets
 [0.1.0-rc.5](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.5).
 The `/spaces` backend must be available for authenticated World inventory. To
 build this checkout with Go installed:
