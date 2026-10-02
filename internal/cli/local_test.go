@@ -275,3 +275,50 @@ func TestLocalSetupChecksNodeBeforeInstalling(t *testing.T) {
 		})
 	}
 }
+
+func TestServeRejectsUnsupportedNode(t *testing.T) {
+	c := localTestClient(t)
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "node"), []byte("#!/bin/sh\necho v20.11.1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	code, out, err := localRun(t, c, []string{"serve", "local:notes"}, "")
+	if code != 1 || out != "" || !strings.Contains(err, "Node >=20.12") {
+		t.Fatal(code, out, err)
+	}
+}
+
+func TestEmptyLocalCanChangeEmbedding(t *testing.T) {
+	c := localTestClient(t)
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	// An empty retrieval writes metadata without producing stored memory vectors.
+	if code, _, err := localRun(t, c, []string{"recall", "local:notes"}, "empty query"); code != 0 {
+		t.Fatal(err)
+	}
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	config, _, err := c.readLocal("notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Model != "new-model" {
+		t.Fatal(config)
+	}
+	// Switching the still-empty Local back to lexical permits a real runtime write.
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--lexical"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	if code, _, err := localRun(t, c, []string{"remember", "local:notes"}, "now populated"); code != 0 {
+		t.Fatal(err)
+	}
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, ""); code != 1 || !strings.Contains(err, "bound to this Local") {
+		t.Fatal(code, err)
+	}
+}

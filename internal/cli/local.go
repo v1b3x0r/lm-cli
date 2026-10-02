@@ -665,7 +665,12 @@ func (c Client) runLocal(args []string, in io.Reader, out, stderr io.Writer) (in
 						Model    string  `json:"model"`
 						Endpoint *string `json:"endpoint"`
 					} `json:"localEmbedding"`
-					Episodic []any `json:"episodic"`
+					Episodic    []any `json:"episodic"`
+					SelfFacets  []any `json:"selfFacets"`
+					Prospective []any `json:"prospective"`
+					Persons     map[string]struct {
+						Episodic []any `json:"episodic"`
+					} `json:"persons"`
 				}
 				if json.Unmarshal(data, &saved) != nil {
 					return fail(errors.New("store is corrupt; config was not changed"))
@@ -675,7 +680,11 @@ func (c Client) runLocal(args []string, in io.Reader, out, stderr io.Writer) (in
 					mode = "lexical"
 					endpoint = ""
 				}
-				if saved.Identity == nil || saved.Identity.Mode != mode || saved.Identity.Model != model || (saved.Identity.Endpoint != nil && *saved.Identity.Endpoint != endpoint) {
+				populated := len(saved.Episodic) > 0 || len(saved.SelfFacets) > 0 || len(saved.Prospective) > 0
+				for _, person := range saved.Persons {
+					populated = populated || len(person.Episodic) > 0
+				}
+				if populated && (saved.Identity == nil || saved.Identity.Mode != mode || saved.Identity.Model != model || (saved.Identity.Endpoint != nil && *saved.Identity.Endpoint != endpoint)) {
 					return fail(errors.New("embedding identity is bound to this Local; create another Local instead of changing its model"))
 				}
 			} else if !os.IsNotExist(readErr) {
@@ -705,6 +714,9 @@ func (c Client) runLocal(args []string, in io.Reader, out, stderr io.Writer) (in
 		return emit(map[string]any{"mcpServers": map[string]any{name: map[string]any{"command": executable, "args": []string{"serve", "local:" + name}, "env": map[string]string{"LM_HOME": c.Home}}}})
 	}
 	if command == "serve" {
+		if err := checkLocalNode(); err != nil {
+			return fail(err)
+		}
 		env, err := c.localEnv(config, path)
 		if err != nil {
 			return fail(err)
