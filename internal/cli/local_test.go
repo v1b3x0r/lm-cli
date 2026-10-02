@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -379,5 +380,69 @@ func TestLocalConfigSharesStoreLock(t *testing.T) {
 	}
 	if _, err := os.Stat(lock); !os.IsNotExist(err) {
 		t.Fatal("failed config retained lock", err)
+	}
+}
+
+type brokenLocalWriter struct{}
+
+func (brokenLocalWriter) Write([]byte) (int, error) { return 0, errors.New("broken output") }
+
+func TestLocalInspectPropagatesJSONWriteFailure(t *testing.T) {
+	c := localTestClient(t)
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"inspect", "doctor"} {
+		var stderr bytes.Buffer
+		code := run(c, []string{command, "local:notes", "--json"}, strings.NewReader(""), brokenLocalWriter{}, &stderr)
+		if code != 1 || !strings.Contains(stderr.String(), "output failed") {
+			t.Fatal(command, code, stderr.String())
+		}
+	}
+}
+
+func TestPrivateKeyPreservesLiteralQuotes(t *testing.T) {
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "home")
+	t.Setenv("LM_TEST_QUOTED_KEY", "")
+	for _, secret := range []string{`"quoted-key"`, `'quoted-key'`} {
+		code, out, err := localRun(t, c, []string{"config", "keys", "--key-env", "LM_TEST_QUOTED_KEY", "--json"}, secret+"\n")
+		if code != 0 || strings.Contains(out+err, secret) {
+			t.Fatal("key entry failed or leaked")
+		}
+		key, _, e := c.localKey("LM_TEST_QUOTED_KEY")
+		if e != nil || key != secret {
+			t.Fatal("opaque key did not round-trip")
+		}
+	}
+}
+
+func TestServeRejectsStaleRuntimeHandshake(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("stdio fixture requires Node")
+	}
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "home")
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	entry := filepath.Join(t.TempDir(), "stale.mjs")
+	script := `import readline from 'node:readline';
+ const input=readline.createInterface({input:process.stdin});
+ input.on('line',line=>{const req=JSON.parse(line); if(req.method==='initialize') console.log(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{serverInfo:{version:'0.1.2'}}})); else throw new Error('client request reached stale runtime');});`
+	if err := os.WriteFile(entry, []byte(script), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.localServer = entry
+	code, out, err := localRun(t, c, []string{"serve", "local:notes"}, `{"jsonrpc":"2.0","id":1,"method":"tools/call"}`+"\n")
+	if code != 1 || out != "" || !strings.Contains(err, "runtime version differs") {
+		t.Fatal(code, out, err)
+	}
+	_, path, e := c.readLocal("notes")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e := os.Stat(filepath.Join(path, "brain.json")); !os.IsNotExist(e) {
+		t.Fatal("stale runtime touched store", e)
 	}
 }

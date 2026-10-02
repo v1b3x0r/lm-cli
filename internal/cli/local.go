@@ -731,9 +731,13 @@ func (c Client) runLocal(args []string, in io.Reader, out, stderr io.Writer) (in
 		return emit(map[string]any{"mcpServers": map[string]any{name: map[string]any{"command": executable, "args": []string{"serve", "local:" + name}, "env": map[string]string{"LM_HOME": c.Home}}}})
 	}
 	if command == "serve" {
-		if err := checkLocalNode(); err != nil {
+		// Verify the same application-version handshake as ordinary operations
+		// before exposing any client requests to the installed runtime.
+		checked, err := c.startLocal(config, path)
+		if err != nil {
 			return fail(err)
 		}
+		checked.close()
 		env, err := c.localEnv(config, path)
 		if err != nil {
 			return fail(err)
@@ -819,7 +823,9 @@ func (c Client) runLocal(args []string, in io.Reader, out, stderr io.Writer) (in
 		result["ready"] = ready
 		result["issue"] = issue
 		if asJSON {
-			emit(result)
+			if code, handled := emit(result); code != 0 {
+				return code, handled
+			}
 		} else {
 			dimensions := embedding["dimensions"]
 			if dimensions == nil {

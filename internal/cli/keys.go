@@ -44,9 +44,7 @@ func (c Client) readKeys() (map[string]string, error) {
 		if _, exists := keys[key]; exists {
 			return nil, errors.New("duplicate variable in lm.config; remove the duplicate explicitly")
 		}
-		if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
-			value = value[1 : len(value)-1]
-		}
+
 		if strings.ContainsAny(value, "\r\n\x00") {
 			return nil, errors.New("invalid single-line key in lm.config")
 		}
