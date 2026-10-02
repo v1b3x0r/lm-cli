@@ -2,8 +2,8 @@
 """Exercise installer failure boundaries without touching the owner's shell config."""
 import hashlib, io, os, pathlib, shlex, shutil, subprocess, tarfile, tempfile, unittest
 SCRIPT = pathlib.Path(__file__).with_name('install.sh').resolve()
-VERSION = '0.1.0-rc.4'
-RELEASE_TAG = 'v0.1.0-rc.4'
+VERSION = '0.1.0-rc.5'
+RELEASE_TAG = 'v0.1.0-rc.5'
 RELEASE_BASE = f'https://github.com/v1b3x0r/lm-cli/releases/download/{RELEASE_TAG}'
 class Installer(unittest.TestCase):
     def setUp(self):

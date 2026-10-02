@@ -1,8 +1,8 @@
 # Install a release bundle
 
-Release candidate: `0.1.0-rc.4`.
+Release candidate: `0.1.0-rc.5`.
 Obtain the archive and `SHA256SUMS` from the
-[official release](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.4).
+[official release](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.5).
 Do not fetch similarly named packages from an unrelated registry.
 
 ## One command (macOS / Linux, zsh or bash)
@@ -63,9 +63,9 @@ delete remote Rooms. Keep private grants if you intend to return to them.
 ## Download example: Apple Silicon Mac
 
 ```sh
-curl -fLO https://github.com/v1b3x0r/lm-cli/releases/download/v0.1.0-rc.4/lm-cli_0.1.0-rc.4_darwin_arm64.tar.gz
-curl -fLO https://github.com/v1b3x0r/lm-cli/releases/download/v0.1.0-rc.4/SHA256SUMS
-shasum -a 256 lm-cli_0.1.0-rc.4_darwin_arm64.tar.gz
+curl -fLO https://github.com/v1b3x0r/lm-cli/releases/download/v0.1.0-rc.5/lm-cli_0.1.0-rc.5_darwin_arm64.tar.gz
+curl -fLO https://github.com/v1b3x0r/lm-cli/releases/download/v0.1.0-rc.5/SHA256SUMS
+shasum -a 256 lm-cli_0.1.0-rc.5_darwin_arm64.tar.gz
 ```
 
 Compare the matching checksum before extracting and installing as above.

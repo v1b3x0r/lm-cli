@@ -14,13 +14,14 @@ import zipfile
 ROOT = Path(__file__).resolve().parent.parent
 version = sys.argv[1] if len(sys.argv) == 2 else ""
 if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?", version):
-    raise SystemExit("usage: python3 scripts/package.py 0.1.0-rc.4")
+    raise SystemExit("usage: python3 scripts/package.py 0.1.0-rc.5")
 dest = ROOT / "dist" / version
 dest.mkdir(parents=True, exist_ok=False)
 files = {
     "README.md": ROOT / "README.md",
     "QUICKSTART.md": ROOT / "docs/agent-quickstart.md",
     "INSTALL.md": ROOT / "docs/install.md",
+    "LOCAL.md": ROOT / "docs/local.md",
 }
 checksums = []
 for target, arch in [("darwin", "arm64"), ("darwin", "amd64"),

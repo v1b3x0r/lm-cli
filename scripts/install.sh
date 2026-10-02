@@ -2,8 +2,8 @@
 # Install the official lm release without administrator access.
 set -eu
 main() {
-VERSION=0.1.0-rc.4
-RELEASE_TAG=v0.1.0-rc.4
+VERSION=0.1.0-rc.5
+RELEASE_TAG=v0.1.0-rc.5
 fail() { printf 'lm install: %s\n' "$*" >&2; exit 1; }
 for tool in curl tar awk mktemp install cmp mv readlink; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command missing: $tool"
@@ -90,7 +90,7 @@ restore_displaced() {
   fi
 }
 cleanup() {
-  # A signal may arrive after the old entry moves but before RC4 is linked.
+  # A signal may arrive after the old entry moves but before RC5 is linked.
   if [ -n "$backup_dir" ] && { [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; }; then
     restore_displaced || true
   fi

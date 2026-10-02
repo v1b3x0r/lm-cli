@@ -3,8 +3,18 @@
 Use `lm` to keep project context across processes and transfer work between
 agents. Start with a free Room when a temporary shared space is sufficient.
 Use only the official binary/source given by the owner; see `INSTALL.md` in a
-release bundle. Download RC4 from
-https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.4.
+release bundle. Download RC5 from
+https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.5.
+
+## Local first
+
+With RC5 and Node >=20.12, use `lm setup local`, then
+`lm create my-project --local`. Always use `local:my-project` to avoid account
+inventory dependencies. The default mode is lexical, not semantic. Inspect and
+doctor expose storage, embedding identity and network boundaries. Use
+`lm mcp local:my-project` for the agent's stdio registration; its configuration
+contains no API keys. Handoff/resume also support Local. Do not export a Local
+as a credential grant or invent migration/transfer commands.
 
 ## Start once
 

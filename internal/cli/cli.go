@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var version = "0.1.0-rc.4"
+var version = "0.1.0-rc.5"
 
 const maxResponse = 2 << 20
 
@@ -30,6 +30,8 @@ type Grant struct {
 }
 
 type Client struct {
+	modelsURL    string
+	localServer  string
 	HTTP         *http.Client
 	Base         string
 	Home         string
@@ -209,7 +211,22 @@ func (c Client) Discover(g Grant) (Discovery, error) {
 	return out, errors.New("discovery: tool inventory exceeded page limit")
 }
 
-const help = `lm — Living Memory from your terminal
+const help = `Local memory (on this device):
+  lm setup local
+  lm config keys  (hidden input; private lm.config)
+  lm models --provider openrouter [--json]
+  lm create my-memory --local
+  lm create my-memory --local --provider ollama --model embeddinggemma
+  lm config local:my-memory [--provider ... --model ... --key-env VARIABLE]
+  lm doctor local:my-memory [--probe] [--json]
+  lm inspect local:my-memory [--json]
+  lm mcp local:my-memory
+  lm serve local:my-memory
+  remember/recall/state/handoff/resume also accept local:<name>.
+Interactive setup offers OpenRouter first; --lexical selects offline hash retrieval.
+Semantic provider probes send a generic request and may incur provider charges.
+
+lm — Living Memory from your terminal
 
   lm login [--json]               Sign in through browser OAuth
   lm logout                       Remove local account credentials
@@ -248,6 +265,9 @@ func run(c Client, args []string, in io.Reader, out, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "version" {
 		fmt.Fprintln(out, version)
 		return 0
+	}
+	if code, handled := c.runLocal(args, in, out, stderr); handled {
+		return code
 	}
 	asJSON := false
 	room := false
