@@ -235,3 +235,43 @@ func TestPrivateKeyConfigAndLiveCatalogContract(t *testing.T) {
 		t.Fatal("unsafe credential file accepted")
 	}
 }
+
+func TestLocalSetupChecksNodeBeforeInstalling(t *testing.T) {
+	for _, version := range []string{"v18.20.8", "v20.11.1", "invalid", "v20.12.0", "v22.0.0"} {
+		t.Run(version, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("PATH", dir)
+			if err := os.WriteFile(filepath.Join(dir, "node"), []byte("#!/bin/sh\nprintf '%s\\n' '"+version+"'\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			c := newClient()
+			c.Home = filepath.Join(t.TempDir(), "home")
+			valid := version == "v20.12.0" || version == "v22.0.0"
+			if valid {
+				entry := filepath.Join(c.Home, "runtime", "node_modules", "@nature-labs", "living-memory-mcp")
+				if err := os.MkdirAll(filepath.Join(entry, "dist"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(entry, "package.json"), []byte(`{"name":"@nature-labs/living-memory-mcp","version":"0.1.3"}`), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(entry, "dist", "server.js"), []byte("// fixture"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			code, out, stderr := localRun(t, c, []string{"setup", "local", "--json"}, "")
+			if valid {
+				if code != 0 || !strings.Contains(out, "already_installed") {
+					t.Fatal(code, out, stderr)
+				}
+			} else {
+				if code != 1 || !strings.Contains(stderr, "Node >=20.12") || !json.Valid([]byte(out)) {
+					t.Fatal(code, out, stderr)
+				}
+				if _, err := os.Stat(c.Home); !os.IsNotExist(err) {
+					t.Fatal("setup wrote files before rejecting Node", err)
+				}
+			}
+		})
+	}
+}

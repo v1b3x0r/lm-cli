@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -171,9 +172,29 @@ type localRPC struct {
 	id        int
 }
 
+func checkLocalNode() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	data, err := exec.CommandContext(ctx, "node", "--version").Output()
+	if err != nil {
+		return errors.New("cannot verify Node version; Local requires Node >=20.12")
+	}
+	value := strings.TrimSpace(string(data))
+	if !regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(value) {
+		return errors.New("unrecognized Node version; Local requires Node >=20.12")
+	}
+	parts := strings.Split(strings.TrimPrefix(value, "v"), ".")
+	major, e1 := strconv.Atoi(parts[0])
+	minor, e2 := strconv.Atoi(parts[1])
+	if e1 != nil || e2 != nil || major < 20 || (major == 20 && minor < 12) {
+		return errors.New("Local requires Node >=20.12; upgrade Node before setup or Local operations")
+	}
+	return nil
+}
+
 func (c Client) startLocal(config localConfig, path string) (*localRPC, error) {
-	if _, err := exec.LookPath("node"); err != nil {
-		return nil, errors.New("Local needs Node >=20.12; install Node, then run lm setup local")
+	if err := checkLocalNode(); err != nil {
+		return nil, err
 	}
 	info, err := os.Stat(c.localServerPath())
 	if err != nil || !info.Mode().IsRegular() {
@@ -502,8 +523,8 @@ func (c Client) runLocal(args []string, in io.Reader, out, stderr io.Writer) (in
 		if len(positions) != 1 || positions[0] != "local" || len(options) != 0 || probe {
 			return fail(errors.New("usage: lm setup local [--json]"))
 		}
-		if _, err := exec.LookPath("node"); err != nil {
-			return fail(errors.New("install Node >=20.12, then run lm setup local; Room/World commands do not require Node"))
+		if err := checkLocalNode(); err != nil {
+			return fail(err)
 		}
 		runtime := filepath.Join(c.Home, "runtime")
 		if _, err := c.storePath("check"); err != nil {
