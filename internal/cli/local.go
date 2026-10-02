@@ -607,6 +607,23 @@ func (c Client) runLocal(args []string, in io.Reader, out, stderr io.Writer) (in
 			return fail(err)
 		}
 	}
+	if command == "config" && len(options) > 0 {
+		// Share the runtime's brain.json operation lock across check and save.
+		lock := filepath.Join(path, "brain.json.lock")
+		if err := os.Mkdir(lock, 0700); err != nil {
+			return fail(errors.New("Local store is busy or locked; config was not changed. Inspect the operation before retrying"))
+		}
+		defer os.RemoveAll(lock)
+		owner, _ := json.Marshal(map[string]any{"pid": os.Getpid(), "createdAt": time.Now().UTC().Format(time.RFC3339Nano)})
+		if err := os.WriteFile(filepath.Join(lock, "owner.json"), owner, 0600); err != nil {
+			return fail(errors.New("cannot persist Local operation lock; config was not changed"))
+		}
+		// Another configuration writer may have completed before we acquired the lock.
+		config, path, err = c.readLocal(name)
+		if err != nil {
+			return fail(err)
+		}
+	}
 	if command == "create" || command == "config" {
 		if provider, ok := options["provider"]; ok {
 			config.Provider = provider

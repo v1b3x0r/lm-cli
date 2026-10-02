@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,12 +17,19 @@ func localTestClient(t *testing.T) Client {
 	t.Helper()
 	c := newClient()
 	c.Home = filepath.Join(t.TempDir(), "private")
-	path, err := filepath.Abs("../../../living-memory-engine/lme-mcp/dist/server.js")
+	runtime := os.Getenv("LM_LOCAL_SERVER")
+	if runtime == "" {
+		runtime = "../../../living-memory-engine/lme-mcp/dist/server.js"
+	}
+	path, err := filepath.Abs(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = os.Stat(path); err != nil {
-		t.Fatal("build local MCP before integration tests:", err)
+		t.Skipf("external MCP integration: build the separate local runtime or set LM_LOCAL_SERVER (%v)", err)
+	}
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("external MCP integration requires Node >=20.12")
 	}
 	c.localServer = path
 	c.HTTP = &http.Client{Transport: localRoundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -320,5 +328,56 @@ func TestEmptyLocalCanChangeEmbedding(t *testing.T) {
 	}
 	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, ""); code != 1 || !strings.Contains(err, "bound to this Local") {
 		t.Fatal(code, err)
+	}
+}
+
+func TestLocalConfigSharesStoreLock(t *testing.T) {
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "home")
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	_, path, err := c.readLocal("notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(path, "config.json")
+	before, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(path, "brain.json.lock")
+	if err := os.Mkdir(lock, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lock, "owner.json"), []byte("runtime-owned"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, "")
+	if code != 1 || !strings.Contains(stderr, "busy or locked") {
+		t.Fatal(code, stderr)
+	}
+	after, _ := os.ReadFile(configPath)
+	if !bytes.Equal(before, after) {
+		t.Fatal("config changed during store operation")
+	}
+	owner, _ := os.ReadFile(filepath.Join(lock, "owner.json"))
+	if string(owner) != "runtime-owned" {
+		t.Fatal("foreign lock was modified")
+	}
+	if err := os.RemoveAll(lock); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatal("config did not release lock", err)
+	}
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "bad-provider"}, ""); code != 1 {
+		t.Fatal(code, err)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatal("failed config retained lock", err)
 	}
 }
