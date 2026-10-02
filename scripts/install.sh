@@ -2,8 +2,8 @@
 # Install the official lm release without administrator access.
 set -eu
 main() {
-VERSION=0.1.0-rc.4
-RELEASE_TAG=v0.1.0-rc.4
+VERSION=0.1.0-rc.5
+RELEASE_TAG=v0.1.0-rc.5
 fail() { printf 'lm install: %s\n' "$*" >&2; exit 1; }
 for tool in curl tar awk mktemp install cmp mv readlink; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command missing: $tool"
@@ -90,7 +90,7 @@ restore_displaced() {
   fi
 }
 cleanup() {
-  # A signal may arrive after the old entry moves but before RC4 is linked.
+  # A signal may arrive after the old entry moves but before RC5 is linked.
   if [ -n "$backup_dir" ] && { [ -e "$backup_dir/lm" ] || [ -L "$backup_dir/lm" ]; }; then
     restore_displaced || true
   fi
@@ -136,6 +136,10 @@ if [ -e "$bindir/lm" ] || [ -L "$bindir/lm" ]; then
       003207f3ac307e5f14065d8a7b3286ebb63a5e0f093f742c7ac4eb1291c07d9b|\
       7ce80da1c04283ba5ec1641df0a4684175190421855feef3ff77cc92e855c40d|\
       35908c5e6640a0cc6d726b023e527df7d5ff56390aff01572390deadfddb43ac) previous=0.1.0-rc.3 ;;
+      d9cc4a8653075366579c11b7f1af07f9f4948990261b96d6d3ca917bc60ca84e|\
+      f51983a1fe3ac0b331dcbae3ff2fb825a0e75211ed3d50f67bbefdcb14dedb8f|\
+      d1502f24c94e4aa92f07b1ee4393732642fab622ae264b4ffa36377b5f1dae4e|\
+      7cc38532e7307d2e8d5c4f203aefecf3810059d63e341e128bed1aea515ce95c) previous=0.1.0-rc.4 ;;
       *) fail "An unrecognized lm exists at $bindir/lm. Nothing overwritten." ;;
     esac
     [ -f "$bindir/lm" ] && [ ! -L "$bindir/lm" ] &&

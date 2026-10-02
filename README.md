@@ -1,10 +1,39 @@
 # lm-cli
 
-A shared place your agents can leave and return to, from a terminal.
+Local memory on your device, or a shared Room/World your agents can return to.
 
-Use a Room when one agent needs to leave context for another, or when work must
-continue after a process, model, or machine changes. `lm` lets you find that Room,
-open it in the browser, and pick up where the previous agent stopped.
+**RC5 candidate: not yet published. The public installer remains RC4 until release.**
+
+## Your first Local
+
+Local commands require Node >=20.12 and npm; Room/World commands use the Go
+binary alone. Build this checkout first while the release is pending.
+
+```sh
+lm setup local
+lm config keys
+lm create my-memory --local --provider openrouter
+printf '%s' 'เชียงใหม่ is my workshop base' | lm remember local:my-memory
+printf '%s' 'เชียงใหม่' | lm recall local:my-memory
+lm doctor local:my-memory
+lm mcp local:my-memory
+```
+
+Interactive creation offers OpenRouter first, reads a key privately if needed,
+and fetches a live embedding-model picker. Agents use `lm models --provider
+openrouter --json` and pass an explicit `--model ID`. For offline lexical/hash
+retrieval, use `lm create offline --local --lexical`; it is not semantic AI.
+For on-device semantic recall, create another Local with your chosen model:
+
+```sh
+lm create semantic-notes --local --provider ollama --model embeddinggemma
+lm doctor local:semantic-notes --probe
+```
+
+Ollama must already have that embedding model available. LM Studio, OpenRouter
+and generic OpenAI-compatible embedding endpoints are also configurable. See
+[Local setup](docs/local.md) (also LOCAL.md in release bundles). `--probe` sends a generic diagnostic request and
+may incur provider charges. Remember/recall never call a chat model.
 
 [Install](docs/install.md) · [Your first Room](docs/first-room.md) · [Agent quickstart](docs/agent-quickstart.md)
 
@@ -16,8 +45,8 @@ macOS or Linux:
 curl -fsSL https://living-memory-cli.pages.dev/install.sh | sh
 ```
 
-Open a new Terminal tab and run `lm version`. The RC4 installer targets
-[0.1.0-rc.4](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.4).
+Open a new Terminal tab and run `lm version`. The staged RC5 installer targets
+[0.1.0-rc.5](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.5).
 The `/spaces` backend must be available for authenticated World inventory. To
 build this checkout with Go installed:
 
@@ -161,7 +190,7 @@ local Rooms and the account's World; `lm world` guides an unpaid account to the
 plan or activates an entitled World. A Space name works when unique. If names
 collide, use `room:<alias>` or `world:<id>` from `lm list --json` with inspect,
 remember, recall, handoff, resume, or state. `--account` remains available for
-the default World during RC4. Authentication alone does not buy a subscription,
+the default World during RC5. Authentication alone does not buy a subscription,
 migrate Rooms, or create a public share link.
 
 OAuth credentials live in private `account.json` under the same configuration
@@ -244,9 +273,9 @@ On 2026-09-20, one production Room passed creation, discovery, handoff/resume
 across processes, memory write/recall, and private grant transfer to a second
 agent directory followed by resume. The purchase entry returned HTTP 200; no
 purchase or authenticated checkout was performed. These are historical RC1
-checks, not RC4 account journey acceptance.
+checks, not RC5 account journey acceptance.
 
-Run `python3 scripts/package.py 0.1.0-rc.4` to build macOS/Linux bundles with
+Run `python3 scripts/package.py 0.1.0-rc.5` to build macOS/Linux bundles with
 checksums and the agent quickstart. Publishing remains a separate step after
 verification. World administration, step-up authentication, watch, and UI are
 outside this slice.

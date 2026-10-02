@@ -1,0 +1,448 @@
+package cli
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func localTestClient(t *testing.T) Client {
+	t.Helper()
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "private")
+	runtime := os.Getenv("LM_LOCAL_SERVER")
+	if runtime == "" {
+		runtime = "../../../living-memory-engine/lme-mcp/dist/server.js"
+	}
+	path, err := filepath.Abs(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(path); err != nil {
+		t.Skipf("external MCP integration: build the separate local runtime or set LM_LOCAL_SERVER (%v)", err)
+	}
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("external MCP integration requires Node >=20.12")
+	}
+	c.localServer = path
+	c.HTTP = &http.Client{Transport: localRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("explicit Local selector made an account/hosted request")
+		return nil, nil
+	})}
+	return c
+}
+func localRun(t *testing.T, c Client, args []string, input string) (int, string, string) {
+	t.Helper()
+	var out, stderr bytes.Buffer
+	code := run(c, args, strings.NewReader(input), &out, &stderr)
+	return code, out.String(), stderr.String()
+}
+func TestLocalLoopAcrossStdioProcesses(t *testing.T) {
+	c := localTestClient(t)
+	for _, step := range []struct {
+		args        []string
+		input, want string
+	}{
+		{[]string{"create", "notes", "--local", "--json"}, "", "local_"},
+		{[]string{"doctor", "local:notes", "--json"}, "", `"ready":true`},
+		{[]string{"remember", "local:notes", "--json"}, "เชียงใหม่ has a local capsule", `"remembered":true`},
+		{[]string{"recall", "local:notes", "--json"}, "เชียงใหม่", "เชียงใหม่ has a local capsule"},
+		{[]string{"handoff", "local:notes", "--json"}, "next: review\nkeep exact text", `"id":"h_`},
+		{[]string{"resume", "local:notes"}, "", "next: review\nkeep exact text"},
+		{[]string{"state", "local:notes", "--json"}, "", `"episodic":1`},
+		{[]string{"inspect", "local:notes", "--json"}, "", `"inference":"not_used"`},
+		{[]string{"mcp", "local:notes"}, "", `"serve","local:notes"`},
+	} {
+		code, out, err := localRun(t, c, step.args, step.input)
+		if code != 0 || !strings.Contains(out, step.want) {
+			t.Fatalf("%v: code=%d out=%s err=%s", step.args, code, out, err)
+		}
+		if strings.Contains(strings.Join(step.args, " "), "--json") && !json.Valid([]byte(out)) {
+			t.Fatal("invalid JSON", out)
+		}
+	}
+	code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "embeddinggemma"}, "")
+	if code != 1 || !strings.Contains(err, "bound to this Local") {
+		t.Fatal("model change was not refused", err)
+	}
+	code, _, err = localRun(t, c, []string{"export", "local:notes", "--json"}, "")
+	if code != 1 || !strings.Contains(err, "do not transfer") {
+		t.Fatal("Local was exported as a grant", err)
+	}
+}
+func TestLocalMixedInventoryAndCollision(t *testing.T) {
+	c := localTestClient(t)
+	code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, "")
+	if code != 0 {
+		t.Fatal(err)
+	}
+	path, e := c.reserve("notes")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = c.save(path, Grant{Name: "notes", Kind: "room", URL: "https://lme.viibe.to/t/ons_fake/mcp", ExpiresAt: "2026-10-03T00:00:00Z"}); e != nil {
+		t.Fatal(e)
+	}
+	code, out, err := localRun(t, c, []string{"list", "--json"}, "")
+	if code != 0 || !strings.Contains(out, `"type":"local"`) || !strings.Contains(out, `"type":"room"`) {
+		t.Fatal(code, out, err)
+	}
+	code, _, err = localRun(t, c, []string{"state", "notes"}, "")
+	if code != 1 || !strings.Contains(err, "ambiguous") {
+		t.Fatal("collision was not detected", err)
+	}
+	code, _, err = localRun(t, c, []string{"state", "local:notes"}, "")
+	if code != 0 {
+		t.Fatal(err)
+	}
+}
+func TestLocalDoctorMissingRuntimeAndRemoteKey(t *testing.T) {
+	c := localTestClient(t)
+	c.localServer = filepath.Join(t.TempDir(), "missing.js")
+	code, _, err := localRun(t, c, []string{"create", "notes", "--local", "--provider", "openrouter", "--model", "fixture-model", "--key-env", "LM_TEST_MISSING_KEY"}, "")
+	if code != 0 {
+		t.Fatal(err)
+	}
+	code, out, _ := localRun(t, c, []string{"doctor", "local:notes", "--json"}, "")
+	if code != 1 || !json.Valid([]byte(out)) || !strings.Contains(out, `"ready":false`) {
+		t.Fatal(code, out)
+	}
+	config, path, e := c.readLocal("notes")
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Setenv("LM_TEST_MISSING_KEY", "test-secret-never-output")
+	env, e := c.localEnv(config, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "LME_API_KEY=test-secret-never-output") {
+		t.Fatal("key reference was not resolved")
+	}
+	code, out, err = localRun(t, c, []string{"config", "local:notes", "--json"}, "")
+	if code != 0 || strings.Contains(out+err, "test-secret-never-output") {
+		t.Fatal("secret leak", out, err)
+	}
+}
+
+type localRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f localRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestLocalSemanticFixtureDoesNotProbeDuringInspect(t *testing.T) {
+	c := localTestClient(t)
+	calls := 0
+	dimensions := 2
+	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		vector := make([]float64, dimensions)
+		vector[0] = 1
+		json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"embedding": vector}}})
+	}))
+	defer fixture.Close()
+	code, _, err := localRun(t, c, []string{"create", "semantic", "--local", "--provider", "openai-compatible", "--base-url", fixture.URL + "/v1", "--model", "fixture"}, "")
+	if code != 0 {
+		t.Fatal(err)
+	}
+	code, out, err := localRun(t, c, []string{"inspect", "local:semantic", "--json"}, "")
+	if code != 0 || calls != 0 || !strings.Contains(out, `"ready":false`) {
+		t.Fatal("implicit probe or false readiness", code, calls, out, err)
+	}
+	code, out, err = localRun(t, c, []string{"doctor", "local:semantic", "--probe", "--json"}, "")
+	if code != 0 || calls != 1 || !strings.Contains(out, `"dimensions":2`) {
+		t.Fatal("probe", code, calls, out, err)
+	}
+	code, _, err = localRun(t, c, []string{"remember", "local:semantic"}, "a semantic fixture fact")
+	if code != 0 {
+		t.Fatal(err)
+	}
+	config, path, e := c.readLocal("semantic")
+	if e != nil {
+		t.Fatal(e)
+	}
+	_ = config
+	before, e := os.ReadFile(filepath.Join(path, "brain.json"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	dimensions = 3
+	code, out, err = localRun(t, c, []string{"remember", "local:semantic", "--json"}, "must not persist")
+	if code != 1 || !json.Valid([]byte(out)) || !strings.Contains(err, "dimensions changed") {
+		t.Fatal(code, out, err)
+	}
+	after, e := os.ReadFile(filepath.Join(path, "brain.json"))
+	if e != nil || !bytes.Equal(before, after) {
+		t.Fatal("incompatible embedding changed the store")
+	}
+}
+
+func TestPrivateKeyConfigAndLiveCatalogContract(t *testing.T) {
+	c := localTestClient(t)
+	t.Setenv("OPENROUTER_API_KEY", "")
+	secret := "fake-key-never-print"
+	code, out, err := localRun(t, c, []string{"config", "keys", "--json"}, secret+"\n")
+	if code != 0 || strings.Contains(out+err, secret) {
+		t.Fatal("credential setup leaked or failed", code, out, err)
+	}
+	info, e := os.Stat(filepath.Join(c.Home, "lm.config"))
+	if e != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("credential file is not private")
+	}
+	config := localConfig{Name: "notes", Provider: "openrouter", Model: "fixture", BaseURL: "https://openrouter.ai/api/v1", KeyEnv: "OPENROUTER_API_KEY"}
+	env, e := c.localEnv(config, c.Home)
+	if e != nil || !strings.Contains(strings.Join(env, "\n"), "LME_API_KEY="+secret) {
+		t.Fatal("private credential was not used")
+	}
+	t.Setenv("OPENROUTER_API_KEY", "environment-wins")
+	key, source, e := c.localKey("OPENROUTER_API_KEY")
+	if e != nil || key != "environment-wins" || source != "environment" {
+		t.Fatal("environment precedence")
+	}
+	t.Setenv("OPENROUTER_API_KEY", "")
+	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+secret {
+			t.Error("catalog omitted configured key")
+		}
+		fmt.Fprint(w, `{"data":[{"id":"vendor/second","name":"Second","context_length":2048,"pricing":{"prompt":"0.00000002"}},{"id":"vendor/first","name":"First","pricing":{"prompt":"0"}}]}`)
+	}))
+	defer fixture.Close()
+	c.HTTP = fixture.Client()
+	c.modelsURL = fixture.URL
+	code, out, err = localRun(t, c, []string{"models", "--provider", "openrouter", "--json"}, "")
+	if code != 0 || !json.Valid([]byte(out)) || !strings.Contains(out, "vendor/first") || strings.Contains(out+err, secret) {
+		t.Fatal(code, out, err)
+	}
+	var catalog struct {
+		Models []embeddingModel `json:"models"`
+	}
+	json.Unmarshal([]byte(out), &catalog)
+	if len(catalog.Models) != 2 || catalog.Models[0].ID != "vendor/first" {
+		t.Fatal("model IDs were not discovered")
+	}
+	var prompt bytes.Buffer
+	selected, e := c.chooseEmbeddingModel("OPENROUTER_API_KEY", strings.NewReader("2\n"), &prompt)
+	if e != nil || selected != "vendor/second" || strings.Contains(prompt.String(), secret) {
+		t.Fatal("picker", selected, e)
+	}
+	code, _, err = localRun(t, c, []string{"create", "notes", "--local", "--provider", "openrouter", "--json"}, "")
+	if code != 1 || !strings.Contains(err, "lm models") {
+		t.Fatal("agent create should require an explicit model", code, err)
+	}
+	if e = os.Chmod(filepath.Join(c.Home, "lm.config"), 0644); e != nil {
+		t.Fatal(e)
+	}
+	_, _, e = c.localKey("OPENROUTER_API_KEY")
+	if e == nil {
+		t.Fatal("unsafe credential file accepted")
+	}
+}
+
+func TestLocalSetupChecksNodeBeforeInstalling(t *testing.T) {
+	for _, version := range []string{"v18.20.8", "v20.11.1", "invalid", "v20.12.0", "v22.0.0"} {
+		t.Run(version, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("PATH", dir)
+			if err := os.WriteFile(filepath.Join(dir, "node"), []byte("#!/bin/sh\nprintf '%s\\n' '"+version+"'\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			c := newClient()
+			c.Home = filepath.Join(t.TempDir(), "home")
+			valid := version == "v20.12.0" || version == "v22.0.0"
+			if valid {
+				entry := filepath.Join(c.Home, "runtime", "node_modules", "@nature-labs", "living-memory-mcp")
+				if err := os.MkdirAll(filepath.Join(entry, "dist"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(entry, "package.json"), []byte(`{"name":"@nature-labs/living-memory-mcp","version":"0.1.3"}`), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(entry, "dist", "server.js"), []byte("// fixture"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			code, out, stderr := localRun(t, c, []string{"setup", "local", "--json"}, "")
+			if valid {
+				if code != 0 || !strings.Contains(out, "already_installed") {
+					t.Fatal(code, out, stderr)
+				}
+			} else {
+				if code != 1 || !strings.Contains(stderr, "Node >=20.12") || !json.Valid([]byte(out)) {
+					t.Fatal(code, out, stderr)
+				}
+				if _, err := os.Stat(c.Home); !os.IsNotExist(err) {
+					t.Fatal("setup wrote files before rejecting Node", err)
+				}
+			}
+		})
+	}
+}
+
+func TestServeRejectsUnsupportedNode(t *testing.T) {
+	c := localTestClient(t)
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "node"), []byte("#!/bin/sh\necho v20.11.1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	code, out, err := localRun(t, c, []string{"serve", "local:notes"}, "")
+	if code != 1 || out != "" || !strings.Contains(err, "Node >=20.12") {
+		t.Fatal(code, out, err)
+	}
+}
+
+func TestEmptyLocalCanChangeEmbedding(t *testing.T) {
+	c := localTestClient(t)
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	// An empty retrieval writes metadata without producing stored memory vectors.
+	if code, _, err := localRun(t, c, []string{"recall", "local:notes"}, "empty query"); code != 0 {
+		t.Fatal(err)
+	}
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	config, _, err := c.readLocal("notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Model != "new-model" {
+		t.Fatal(config)
+	}
+	// Switching the still-empty Local back to lexical permits a real runtime write.
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--lexical"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	if code, _, err := localRun(t, c, []string{"remember", "local:notes"}, "now populated"); code != 0 {
+		t.Fatal(err)
+	}
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, ""); code != 1 || !strings.Contains(err, "bound to this Local") {
+		t.Fatal(code, err)
+	}
+}
+
+func TestLocalConfigSharesStoreLock(t *testing.T) {
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "home")
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	_, path, err := c.readLocal("notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(path, "config.json")
+	before, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(path, "brain.json.lock")
+	if err := os.Mkdir(lock, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lock, "owner.json"), []byte("runtime-owned"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, "")
+	if code != 1 || !strings.Contains(stderr, "busy or locked") {
+		t.Fatal(code, stderr)
+	}
+	after, _ := os.ReadFile(configPath)
+	if !bytes.Equal(before, after) {
+		t.Fatal("config changed during store operation")
+	}
+	owner, _ := os.ReadFile(filepath.Join(lock, "owner.json"))
+	if string(owner) != "runtime-owned" {
+		t.Fatal("foreign lock was modified")
+	}
+	if err := os.RemoveAll(lock); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "ollama", "--model", "new-model"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatal("config did not release lock", err)
+	}
+	if code, _, err := localRun(t, c, []string{"config", "local:notes", "--provider", "bad-provider"}, ""); code != 1 {
+		t.Fatal(code, err)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatal("failed config retained lock", err)
+	}
+}
+
+type brokenLocalWriter struct{}
+
+func (brokenLocalWriter) Write([]byte) (int, error) { return 0, errors.New("broken output") }
+
+func TestLocalInspectPropagatesJSONWriteFailure(t *testing.T) {
+	c := localTestClient(t)
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"inspect", "doctor"} {
+		var stderr bytes.Buffer
+		code := run(c, []string{command, "local:notes", "--json"}, strings.NewReader(""), brokenLocalWriter{}, &stderr)
+		if code != 1 || !strings.Contains(stderr.String(), "output failed") {
+			t.Fatal(command, code, stderr.String())
+		}
+	}
+}
+
+func TestPrivateKeyPreservesLiteralQuotes(t *testing.T) {
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "home")
+	t.Setenv("LM_TEST_QUOTED_KEY", "")
+	for _, secret := range []string{`"quoted-key"`, `'quoted-key'`} {
+		code, out, err := localRun(t, c, []string{"config", "keys", "--key-env", "LM_TEST_QUOTED_KEY", "--json"}, secret+"\n")
+		if code != 0 || strings.Contains(out+err, secret) {
+			t.Fatal("key entry failed or leaked")
+		}
+		key, _, e := c.localKey("LM_TEST_QUOTED_KEY")
+		if e != nil || key != secret {
+			t.Fatal("opaque key did not round-trip")
+		}
+	}
+}
+
+func TestServeRejectsStaleRuntimeHandshake(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("stdio fixture requires Node")
+	}
+	c := newClient()
+	c.Home = filepath.Join(t.TempDir(), "home")
+	if code, _, err := localRun(t, c, []string{"create", "notes", "--local"}, ""); code != 0 {
+		t.Fatal(err)
+	}
+	entry := filepath.Join(t.TempDir(), "stale.mjs")
+	script := `import readline from 'node:readline';
+ const input=readline.createInterface({input:process.stdin});
+ input.on('line',line=>{const req=JSON.parse(line); if(req.method==='initialize') console.log(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{serverInfo:{version:'0.1.2'}}})); else throw new Error('client request reached stale runtime');});`
+	if err := os.WriteFile(entry, []byte(script), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.localServer = entry
+	code, out, err := localRun(t, c, []string{"serve", "local:notes"}, `{"jsonrpc":"2.0","id":1,"method":"tools/call"}`+"\n")
+	if code != 1 || out != "" || !strings.Contains(err, "runtime version differs") {
+		t.Fatal(code, out, err)
+	}
+	_, path, e := c.readLocal("notes")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e := os.Stat(filepath.Join(path, "brain.json")); !os.IsNotExist(e) {
+		t.Fatal("stale runtime touched store", e)
+	}
+}

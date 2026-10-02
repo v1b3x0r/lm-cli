@@ -200,6 +200,11 @@ func (c Client) listSpaces(out io.Writer, asJSON bool) error {
 		spaces = append(spaces, roomSpace(row))
 		privateRooms = append(privateRooms, privateListRoom(row))
 	}
+	locals, err := c.localSpaces()
+	if err != nil {
+		return err
+	}
+	spaces = append(spaces, locals...)
 	spaces = append(spaces, remote.Spaces...)
 	for i := range spaces {
 		spaces[i].Endpoint = ""
@@ -223,9 +228,9 @@ func (c Client) listSpaces(out io.Writer, asJSON bool) error {
 	}
 	if len(spaces) == 0 && status == "ok" {
 		if remoteStatus == "signed_out" {
-			fmt.Fprintln(out, "  No Spaces yet. Create a Room: lm create my-room --room  ·  Sign in for Worlds: lm login")
+			fmt.Fprintln(out, "  No Spaces yet. Create Local: lm create my-memory --local  ·  Room: lm create my-room --room  ·  Sign in for Worlds: lm login")
 		} else {
-			fmt.Fprintln(out, "  No Spaces yet. Create a Room: lm create my-room --room")
+			fmt.Fprintln(out, "  No Spaces yet. Create Local: lm create my-memory --local  ·  Room: lm create my-room --room")
 		}
 	}
 	if status != "ok" {
@@ -247,7 +252,7 @@ func (c Client) listSpaces(out io.Writer, asJSON bool) error {
 	if len(spaces) == 0 {
 		return nil
 	}
-	_, err = fmt.Fprintln(out, "  Details: lm inspect <name>  (quote names with spaces; use room:<alias> or world:<id> for collisions)")
+	_, err = fmt.Fprintln(out, "  Details: lm inspect <name>  (quote names with spaces; use local:<name>, room:<alias> or world:<id> for collisions)")
 	return err
 }
 

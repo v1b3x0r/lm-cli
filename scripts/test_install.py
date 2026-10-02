@@ -2,8 +2,8 @@
 """Exercise installer failure boundaries without touching the owner's shell config."""
 import hashlib, io, os, pathlib, shlex, shutil, subprocess, tarfile, tempfile, unittest
 SCRIPT = pathlib.Path(__file__).with_name('install.sh').resolve()
-VERSION = '0.1.0-rc.4'
-RELEASE_TAG = 'v0.1.0-rc.4'
+VERSION = '0.1.0-rc.5'
+RELEASE_TAG = 'v0.1.0-rc.5'
 RELEASE_BASE = f'https://github.com/v1b3x0r/lm-cli/releases/download/{RELEASE_TAG}'
 class Installer(unittest.TestCase):
     def setUp(self):
@@ -89,6 +89,22 @@ fi
         self.assertEqual(len(backups),1)
         self.assertEqual(backups[0].read_bytes(),old)
         self.assertIn(str(backups[0]),result.stdout)
+    def test_upgrade_all_published_rc4_binaries(self):
+        for official_hash in [
+            'd9cc4a8653075366579c11b7f1af07f9f4948990261b96d6d3ca917bc60ca84e',
+            'f51983a1fe3ac0b331dcbae3ff2fb825a0e75211ed3d50f67bbefdcb14dedb8f',
+            'd1502f24c94e4aa92f07b1ee4393732642fab622ae264b4ffa36377b5f1dae4e',
+            '7cc38532e7307d2e8d5c4f203aefecf3810059d63e341e128bed1aea515ce95c',
+        ]:
+            with self.subTest(official_hash=official_hash):
+                p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True, exist_ok=True)
+                old=b'#!/bin/sh\necho 0.1.0-rc.4\n'
+                p.write_bytes(old); p.chmod(0o755)
+                self.trust_fixture_as_rc3(p, official_hash)
+                result=self.run_install()
+                self.assertIn(f'Upgraded lm from 0.1.0-rc.4 to {VERSION}', result.stdout)
+                self.assertEqual(subprocess.check_output([str(p),'version'],text=True).strip(),VERSION)
+                self.assertTrue(any(b.read_bytes()==old for b in p.parent.glob('.lm-previous.*/lm')))
     def test_upgrade_prior_binary_from_another_architecture(self):
         p=self.root/'.local/bin/lm'; p.parent.mkdir(parents=True)
         p.write_text('#!/bin/sh\necho 0.1.0-rc.3\n'); p.chmod(0o755)
