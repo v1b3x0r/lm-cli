@@ -128,3 +128,14 @@ describe('lm doors', () => {
     expect(r.out + r.err).not.toContain('at-good');
   });
 });
+
+describe('server refusals', () => {
+  it('are reported with fixed text, never the server body', async () => {
+    lme.tools.client_mint = () => ({ content: [{ type: 'text', text: 'Refused LME.VIIBE.TO/t/LMC_0123456789ABCDEF/mcp sk-live-9f8e7d6c5b4a' }], isError: true });
+    const r = await lm('doors', 'open', 'x', '--read', '--json');
+    const e = JSON.parse(r.out).error;
+    expect(e.code).toBe('server_refused');
+    expect(e.message).not.toMatch(/LMC_|sk-live|VIIBE|Refused/);
+    expect(e.message).toContain('lm doors list');
+  });
+});

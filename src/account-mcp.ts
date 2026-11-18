@@ -6,15 +6,6 @@ import { CliError } from './output.js';
 
 export const ACCOUNT_MCP = 'https://lme.viibe.to/mcp';
 
-/** Remove anything that could be a door URL or credential from text a server sent us. */
-export function redact(text: string, secrets: string[] = []): string {
-  for (const s of secrets) if (s) text = text.split(s).join('<credential>');
-  return text
-    .replace(/https?:\/\/\S+/g, '<url>')
-    .replace(/\b(?:lm[a-z]?|ro|ons)_[A-Za-z0-9]{8,}\b/g, '<credential>')
-    .slice(0, 300);
-}
-
 /**
  * Call one tool on the account rail (LME's OAuth /mcp) and return its structuredContent.
  *
@@ -60,10 +51,12 @@ export async function callAccountTool<T>(
       if (!tools.some((t) => t.name === name))
         throw new CliError('server_unsupported', 'this Living Memory server does not support that command yet');
       const result = await client.callTool({ name, arguments: args });
-      if (result.isError) {
-        const text = (result.content as Array<{ type: string; text?: string }>).find((c) => c.type === 'text')?.text ?? 'refused';
-        throw new CliError('server_refused', redact(text, [bearer]));
-      }
+      // A refusal's text is a server response body, and the spec forbids echoing those: no
+      // blocklist can prove it holds no URL or credential. The code says what happened; the
+      // message says where to look.
+      if (result.isError)
+        throw new CliError('server_refused',
+          'Living Memory refused that request (for example: the label is taken or not allowed, or the door limit is reached). Check with lm doors list.');
       return result.structuredContent as T;
     } catch (e) {
       if (e instanceof CliError) throw e;
