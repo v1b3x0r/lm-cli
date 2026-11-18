@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeAccount } from '../src/account-store.js';
 import { main } from '../src/cli.js';
+import { z } from 'zod';
 import { FakeLme, ok } from './fake-lme.js';
 
 const DOOR_URL = 'https://lme.example/t/lmc_0123456789abcdef0123456789abcdef/mcp';
@@ -148,5 +149,25 @@ describe('server text in human output', () => {
     const list = await lm('doors', 'list');
     expect(who.out + list.out).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
     expect(list.out.trim().split('\n')).toHaveLength(2);
+  });
+});
+
+describe('a server that predates read doors', () => {
+  it('refuses to open a door when client_mint cannot take access', async () => {
+    lme.schemas.client_mint = { label: z.string() };
+    const r = await lm('doors', 'open', 'x', '--read', '--json');
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out).error.code).toBe('server_unsupported');
+    expect(lme.calls).toEqual([]);
+  });
+});
+
+describe('revoke of something that is not a door label', () => {
+  it('never echoes what was typed', async () => {
+    for (const json of [['--json'], []]) {
+      const r = await lm('doors', 'revoke', DOOR_URL, ...json);
+      expect(r.code).toBe(1);
+      expect(r.out + r.err).not.toContain('lmc_');
+    }
   });
 });

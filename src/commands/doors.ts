@@ -40,6 +40,7 @@ export async function doorsOpen(ctx: Context, label: string, read: boolean): Pro
 
 export async function doorsRevoke(ctx: Context, label: string): Promise<Result> {
   const { revoked } = await callAccountTool<{ revoked: number }>(ctx.home, 'client_revoke', { label }, ctx);
-  if (!revoked) throw new CliError('not_found', `no door named "${label}"`);
+  // Never echo the argument: people paste the door link itself here.
+  if (!revoked) throw new CliError('not_found', 'no door has that label; see lm doors list');
   return { ok: true, data: { label, revoked }, human: `Revoked "${safeText(label)}". That link no longer opens this World.` };
 }

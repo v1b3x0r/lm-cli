@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accessToken, login, logout, type Endpoints } from '../src/auth.js';
-import { readAccount, writeAccount } from '../src/account-store.js';
+import { lockAccount, readAccount, writeAccount } from '../src/account-store.js';
 import { CliError } from '../src/output.js';
 
 let server: Server;
@@ -161,5 +161,24 @@ describe('browserCommand', () => {
     expect(browserCommand('win32', 'https://x/a?b=1&c=2')).toBeNull();
     expect(browserCommand('darwin', 'https://x/a?b=1&c=2')).toEqual(['open', ['https://x/a?b=1&c=2']]);
     expect(browserCommand('linux', 'https://x/a?b=1&c=2')).toEqual(['xdg-open', ['https://x/a?b=1&c=2']]);
+  });
+});
+
+describe('account lock', () => {
+  it('names the absolute lock path', () => {
+    const release = lockAccount(home);
+    try { expect(() => lockAccount(home)).toThrow(join(home, 'account.json.lock')); } finally { release(); }
+  });
+
+  it('is released when the command is interrupted', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+    const before = process.listenerCount('SIGINT');
+    lockAccount(home);
+    expect(process.listenerCount('SIGINT')).toBe(before + 1);
+    (process.listeners('SIGINT').at(-1) as (s: string) => void)('SIGINT');
+    expect(existsSync(join(home, 'account.json.lock'))).toBe(false);
+    expect(exit).toHaveBeenCalledWith(130);
+    expect(process.listenerCount('SIGINT')).toBe(before);
+    exit.mockRestore();
   });
 });

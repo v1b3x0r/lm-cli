@@ -66,9 +66,18 @@ export function lockAccount(home: string): () => void {
   try { mkdirSync(lock, { mode: 0o700 }); }
   catch {
     throw new CliError('account_locked',
-      'account is locked; finish the other account command first. After a crashed command, remove account.json.lock only when no account command is running');
+      `account is locked; finish the other account command first. After a crashed command, remove ${lock} only when no account command is running`);
   }
-  return () => { try { rmdirSync(lock); } catch { /* already released */ } };
+  // Ctrl+C during the 5-minute login wait is the normal way out; it must not leave the lock.
+  const onSignal = (signal: NodeJS.Signals) => { release(); process.exit(signal === 'SIGINT' ? 130 : 143); };
+  const release = () => {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    try { rmdirSync(lock); } catch { /* already released */ }
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+  return release;
 }
 
 export async function withAccountLock<T>(home: string, fn: () => Promise<T>): Promise<T> {

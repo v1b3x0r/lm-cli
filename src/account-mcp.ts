@@ -47,8 +47,14 @@ export async function callAccountTool<T>(
         if (signedOut) throw new CliError('not_signed_in', 'account session expired; run lm login');
         throw new CliError('server_unreachable', 'cannot reach Living Memory; try again later');
       }
+      // The tool must exist AND declare every argument we send: an MCP server strips unknown
+      // arguments silently, so an older client_mint would drop access:'read' and mint a WRITE door.
       const { tools } = await client.listTools();
-      if (!tools.some((t) => t.name === name))
+      const tool = tools.find((t) => t.name === name);
+      const props = (tool?.inputSchema.properties ?? {}) as Record<string, { enum?: unknown[] }>;
+      const understood = Object.entries(args).every(([k, v]) =>
+        Object.hasOwn(props, k) && (!props[k]?.enum || props[k]!.enum!.includes(v)));
+      if (!tool || !understood)
         throw new CliError('server_unsupported', 'this Living Memory server does not support that command yet');
       const result = await client.callTool({ name, arguments: args });
       // A refusal's text is a server response body, and the spec forbids echoing those: no

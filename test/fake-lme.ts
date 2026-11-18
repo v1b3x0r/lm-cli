@@ -18,6 +18,8 @@ export class FakeLme {
   calls: Array<{ name: string; args: Record<string, unknown> }> = [];
   refreshes = 0;
   tools: Record<string, Handler> = {};
+  /** Per-tool input schema; default accepts label and access, like LME after read doors. */
+  schemas: Record<string, Record<string, z.ZodType>> = {};
 
   get mcpUrl() { return `${this.base}/mcp`; }
   get endpoints() { return { issuer: this.base, token: `${this.base}/token` }; }
@@ -54,7 +56,7 @@ export class FakeLme {
     const raw = await this.body(req);
     const mcp = new McpServer({ name: 'fake-lme', version: '0' });
     for (const [name, fn] of Object.entries(this.tools)) {
-      mcp.registerTool(name, { description: name, inputSchema: { label: z.string().optional(), access: z.string().optional() } },
+      mcp.registerTool(name, { description: name, inputSchema: this.schemas[name] ?? { label: z.string().optional(), access: z.enum(['read', 'write']).optional() } },
         (args: Record<string, unknown>) => { this.calls.push({ name, args }); return fn(args); });
     }
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
