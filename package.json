@@ -6,6 +6,10 @@
   "bin": {
     "lm": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20.12"
   },
