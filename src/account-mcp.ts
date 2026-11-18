@@ -4,7 +4,11 @@ import { withAccountLock } from './account-store.js';
 import { accessToken, HTTP_TIMEOUT_MS, type Endpoints } from './auth.js';
 import { CliError } from './output.js';
 
-export const ACCOUNT_MCP = 'https://lme.viibe.to/mcp';
+/**
+ * LME's door for this CLI onto its OAuth rail. The public /mcp withholds the client tools (and
+ * access_list) from listed chat apps; /cli/mcp is the same rail, same token, with them offered.
+ */
+export const ACCOUNT_MCP = 'https://lme.viibe.to/cli/mcp';
 
 /**
  * Call one tool on the account rail (LME's OAuth /mcp) and return its structuredContent.
