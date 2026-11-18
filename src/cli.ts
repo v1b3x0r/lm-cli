@@ -3,6 +3,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { login, logout } from './auth.js';
 import { accessList } from './commands/access.js';
+import { doctor } from './commands/doctor.js';
 import { doorsList, doorsOpen, doorsRevoke, whoami } from './commands/doors.js';
 import type { Context } from './context.js';
 import { configHome } from './home.js';
@@ -16,6 +17,7 @@ const USAGE = `usage: lm <command> [--json]
   lm doors open <label> --read    Open a read-only door (prints its link once)
   lm doors revoke <label>         Close a door
   lm access list                  Who can reach your World's memory right now
+  lm doctor door <url>            Check a door: reachable? read-only? (never prints it back)
   lm version                      Print the lm version`;
 
 function version(): string {
@@ -46,6 +48,9 @@ async function run(args: string[], flags: Set<string>, ctx: Context): Promise<Re
       if (sub === 'list' && !arg) return doorsList(ctx);
       if (sub === 'open' && arg) return doorsOpen(ctx, arg, flags.has('--read'));
       if (sub === 'revoke' && arg) return doorsRevoke(ctx, arg);
+      throw usage();
+    case 'doctor':
+      if (sub === 'door' && arg) return doctor(arg);
       throw usage();
     case 'access':
       if (sub === 'list' && !arg) return accessList(ctx);
