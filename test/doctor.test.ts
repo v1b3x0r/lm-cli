@@ -71,3 +71,11 @@ describe('lm doctor door', () => {
     expect(all).not.toContain(base);
   });
 });
+
+describe('doctor output', () => {
+  it('strips control characters from tool names the door reports', async () => {
+    tools = ['memory_search', 'evil\x1b]0;pwned\x07'];
+    await main(['doctor', 'door', `${base}/t/${TOKEN}/mcp`]);
+    expect(out.join('')).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
+  });
+});

@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { CliError, type Result } from '../output.js';
+import { safeText } from '../text.js';
 
 /** A tool that writes, deletes or posts. A door without any of them is read-only. */
 const WRITE_TOOLS = ['memory_add', 'memory_forget', 'handoff_post'];
@@ -43,7 +44,7 @@ export async function doctor(raw: string): Promise<Result> {
   const human = [
     'Door: reachable',
     `Read-only: ${r.readOnly ? 'yes (no tool can write, delete or post)' : 'NO — this door can change memory'}`,
-    `Tools: ${r.tools.join(', ')}`,
+    `Tools: ${r.tools.map(safeText).join(', ')}`,
   ].join('\n');
   return { ok: true, data: r, human };
 }

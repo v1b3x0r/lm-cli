@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, request as httpRequest, type Server } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -180,5 +180,30 @@ describe('account lock', () => {
     expect(exit).toHaveBeenCalledWith(130);
     expect(process.listenerCount('SIGINT')).toBe(before);
     exit.mockRestore();
+  });
+});
+
+describe('forged loopback requests', () => {
+  function hit(port: string, path: string): Promise<number> {
+    return new Promise((ok) => {
+      const req = httpRequest({ host: '127.0.0.1', port, path, headers: { host: `127.0.0.1:${port}` } },
+        (res) => { res.resume(); ok(res.statusCode ?? 0); });
+      req.on('error', () => ok(-1));
+      req.end();
+    });
+  }
+
+  it('get 400 and never end the login (multi-byte state, malformed target)', async () => {
+    const statuses: number[] = [];
+    await login({ home, endpoints: endpoints(), timeoutMs: 5000, openUrl: (link) => {
+      const cb = new URL(new URL(link).searchParams.get('redirect_uri')!);
+      void (async () => {
+        statuses.push(await hit(cb.port, `/callback?code=x&state=${encodeURIComponent('\u00e9'.repeat(43))}&iss=${encodeURIComponent(base)}`));
+        statuses.push(await hit(cb.port, '//['));
+        approve()(link);
+      })();
+    } });
+    expect(statuses).toEqual([400, 400]);
+    expect(readAccount(home)!.accessToken).toBe('at-1');
   });
 });

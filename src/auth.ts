@@ -63,8 +63,12 @@ function listen(port: number): Promise<Server> {
   });
 }
 
-const sameText = (a: string, b: string) =>
-  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+/** Constant-time compare. Byte lengths are checked first: timingSafeEqual throws on unequal buffers. */
+function sameText(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
 
 /**
  * Best-effort browser open; the URL is always printed as well. Windows is deliberately skipped
@@ -123,7 +127,11 @@ export async function login(opts: {
           // The loopback lives for one login. A kept-alive socket would outlive it and be reused
           // against the NEXT login's listener on the same saved port, failing with ECONNRESET.
           res.setHeader('Connection', 'close');
-          const u = new URL(req.url ?? '/', `http://${host}`);
+          // A throw in this listener escapes the login promise and kills lm with the lock held, so
+          // the only two calls that can throw (URL parsing, timingSafeEqual) are made safe.
+          let u: URL;
+          try { u = new URL(req.url ?? '/', `http://${host}`); }
+          catch { res.statusCode = 400; return res.end('Invalid callback.\n'); }
           const q = u.searchParams;
           // Anything that is not OUR callback is ignored, not fatal: a stray or forged hit must
           // not end the login the person is still completing in the browser.
