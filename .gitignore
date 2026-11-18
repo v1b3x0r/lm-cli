@@ -4,3 +4,4 @@
 /dist/
 /docs/release-status.md
 /docs/backend-contract.md
+node_modules/

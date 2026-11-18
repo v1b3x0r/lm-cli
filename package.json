@@ -1,0 +1,26 @@
+{
+  "name": "@nature-labs/lm",
+  "version": "0.2.0-alpha.0",
+  "description": "Living Memory from your terminal: sign in, open read-only doors, see who has access.",
+  "type": "module",
+  "bin": {
+    "lm": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}
