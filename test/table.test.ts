@@ -80,3 +80,14 @@ describe('renderAccessTable', () => {
     expect(text).toContain('…');
   });
 });
+
+describe('server text in the table', () => {
+  it('cannot inject escapes, line breaks, bidi overrides or unknown enum values', () => {
+    const evil = row({ kind: 'holder', label: 'ok\x1b[2J\r\nrw-     human      owner\u202e\u0085', access: 'read', lastUsedAt: ago(60_000) });
+    (evil.principal as { kind: string }).kind = 'root\x07';
+    const text = renderAccessTable([evil], NOW, 200);
+    expect(text.split('\n')).toHaveLength(2);
+    expect(text).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/);
+    expect(text.split('\n')[1]).toMatch(/^r--\s+\?\s/);
+  });
+});

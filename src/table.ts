@@ -1,3 +1,4 @@
+import { known, safeText } from './text.js';
 import type { AccessRow } from './types.js';
 
 /**
@@ -19,14 +20,19 @@ function relative(iso: string, now: number): string {
 
 export function lastUsedCell(row: AccessRow, now: number): string {
   if (row.grant.effective === null) return '?';
-  if (row.grant.effective === false) return row.grant.status === 'active' ? 'inactive' : row.grant.status;
+  if (row.grant.effective === false)
+    return row.grant.status === 'active' ? 'inactive' : known(row.grant.status, ['revoked', 'expired', 'suspended']);
   return row.usage.lastUsedAt ? relative(row.usage.lastUsedAt, now) : '-';
 }
 
 const MIN_CLIENT = 6;
 
 export function renderAccessTable(rows: AccessRow[], now: number, width: number): string {
-  const cells = rows.map((r) => [accessBits(r), r.principal.kind, r.client.label, r.grant.scope.kind, lastUsedCell(r, now)]);
+  // Every server string is cleaned and every enum checked before it reaches the terminal.
+  const cells = rows.map((r) => [
+    accessBits(r), known(r.principal.kind, ['human', 'agent', 'holder', 'service']), safeText(r.client.label),
+    known(r.grant.scope.kind, ['world']), lastUsedCell(r, now),
+  ]);
   const header = ['ACCESS', 'PRINCIPAL', 'CLIENT', 'SCOPE', 'LAST USED'];
   const all = [header, ...cells];
   const widths = header.map((_, i) => Math.max(...all.map((c) => c[i]!.length)));

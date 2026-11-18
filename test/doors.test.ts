@@ -139,3 +139,14 @@ describe('server refusals', () => {
     expect(e.message).toContain('lm doors list');
   });
 });
+
+describe('server text in human output', () => {
+  it('strips control characters from labels and titles', async () => {
+    lme.tools.world_list = () => ok({ worlds: [{ id: 'w_abc', title: 'Fo\x1b]0;pwned\x07under', isDefault: true }] });
+    lme.tools.client_list = () => ok({ clients: [{ label: 'x\r\ny', createdAt: null, expiresAt: null, access: 'read' }] });
+    const who = await lm('whoami');
+    const list = await lm('doors', 'list');
+    expect(who.out + list.out).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
+    expect(list.out.trim().split('\n')).toHaveLength(2);
+  });
+});
