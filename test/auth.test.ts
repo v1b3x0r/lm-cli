@@ -154,3 +154,12 @@ describe('accessToken', () => {
     await expect(accessToken(home, endpoints())).rejects.toMatchObject({ code: 'not_signed_in' });
   });
 });
+
+describe('browserCommand', () => {
+  it('never routes the authorize link through a shell on Windows', async () => {
+    const { browserCommand } = await import('../src/auth.js');
+    expect(browserCommand('win32', 'https://x/a?b=1&c=2')).toBeNull();
+    expect(browserCommand('darwin', 'https://x/a?b=1&c=2')).toEqual(['open', ['https://x/a?b=1&c=2']]);
+    expect(browserCommand('linux', 'https://x/a?b=1&c=2')).toEqual(['xdg-open', ['https://x/a?b=1&c=2']]);
+  });
+});

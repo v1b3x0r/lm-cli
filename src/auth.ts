@@ -66,10 +66,21 @@ function listen(port: number): Promise<Server> {
 const sameText = (a: string, b: string) =>
   a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
+/**
+ * Best-effort browser open; the URL is always printed as well. Windows is deliberately skipped
+ * (Go rc5 parity): routing the link through `cmd /c start` would let cmd.exe split it at every
+ * `&` between query parameters and run the pieces as commands.
+ */
+export function browserCommand(platform: NodeJS.Platform, url: string): [string, string[]] | null {
+  if (platform === 'darwin') return ['open', [url]];
+  if (platform === 'linux') return ['xdg-open', [url]];
+  return null;
+}
+
 function defaultOpen(url: string): void {
-  const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '""', url] : [url];
-  try { spawn(cmd, args, { detached: true, stdio: 'ignore' }).on('error', () => {}).unref(); } catch { /* URL is printed */ }
+  const cmd = browserCommand(process.platform, url);
+  if (!cmd) return;
+  try { spawn(cmd[0], cmd[1], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref(); } catch { /* URL is printed */ }
 }
 
 export async function login(opts: {
