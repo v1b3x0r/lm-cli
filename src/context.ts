@@ -5,4 +5,5 @@ export interface Context {
   home: string;
   base?: string;
   endpoints?: Partial<Endpoints>;
+  timeoutMs?: number;
 }

@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { HTTP_TIMEOUT_MS } from '../auth.js';
 import { CliError, type Result } from '../output.js';
 import { safeText } from '../text.js';
 
@@ -20,12 +21,15 @@ function doorUrl(raw: string): URL {
   return u;
 }
 
-export async function doctorDoor(raw: string): Promise<{ reachable: boolean; readOnly: boolean; tools: string[] }> {
+export async function doctorDoor(raw: string, timeoutMs = HTTP_TIMEOUT_MS): Promise<{ reachable: boolean; readOnly: boolean; tools: string[] }> {
   const url = doorUrl(raw);
   const client = new Client({ name: 'lm-doctor', version: '0.2.0' });
   try {
     await client.connect(new StreamableHTTPClientTransport(url, {
-      fetch: (input, init) => fetch(input, { ...init, redirect: 'manual' }),
+      fetch: (input, init) => {
+        const deadline = AbortSignal.timeout(timeoutMs);
+        return fetch(input, { ...init, redirect: 'manual', signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline });
+      },
     }));
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
     return { reachable: true, readOnly: !tools.some((t) => WRITE_TOOLS.includes(t)), tools };

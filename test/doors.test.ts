@@ -171,3 +171,15 @@ describe('revoke of something that is not a door label', () => {
     }
   });
 });
+
+describe('a Living Memory server that never answers', () => {
+  it('gives up, reports server_unreachable, and releases the lock', async () => {
+    lme.hang = true;
+    out = []; err = [];
+    const code = await main(['doors', 'list', '--json'], { home, base: lme.mcpUrl, endpoints: lme.endpoints, timeoutMs: 300 });
+    expect(code).toBe(1);
+    expect(JSON.parse(out.join('')).error.code).toBe('server_unreachable');
+    lme.hang = false;
+    expect((await lm('doors', 'list')).code).toBe(0);
+  });
+});

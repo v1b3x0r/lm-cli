@@ -79,3 +79,17 @@ describe('doctor output', () => {
     expect(out.join('')).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/);
   });
 });
+
+describe('doctor deadline', () => {
+  it('reports a door that never answers as unreachable', async () => {
+    const hang = createServer(() => {});
+    await new Promise<void>((r) => hang.listen(0, '127.0.0.1', r));
+    const b = `http://127.0.0.1:${(hang.address() as { port: number }).port}`;
+    try {
+      expect((await doctorDoor(`${b}/t/${TOKEN}/mcp`, 300)).reachable).toBe(false);
+    } finally {
+      hang.closeAllConnections();
+      hang.close();
+    }
+  });
+});

@@ -3,10 +3,11 @@
 Living Memory from your terminal: sign in, open read-only doors into your World, and see who can reach it.
 
 ```sh
-npx @nature-labs/lm login
+npx @nature-labs/lm@alpha login
 ```
 
-Requires Node >= 20.12. Alpha: `0.2.x` is published under the npm `alpha` tag.
+Requires Node >= 20.12. Alpha: `0.2.x` is published under the npm `alpha` tag only, so the
+`@alpha` suffix is required until a release is tagged `latest`.
 
 DONE-WHEN: on production, `npx @nature-labs/lm` signs in, opens a read-only door
 into a test World, LM Studio running its own unchanged model and system prompt

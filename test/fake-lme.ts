@@ -17,6 +17,8 @@ export class FakeLme {
   refreshTo: string | null = 'at-good';
   calls: Array<{ name: string; args: Record<string, unknown> }> = [];
   refreshes = 0;
+  /** Accept MCP requests but never answer them. */
+  hang = false;
   tools: Record<string, Handler> = {};
   /** Per-tool input schema; default accepts label and access, like LME after read doors. */
   schemas: Record<string, Record<string, z.ZodType>> = {};
@@ -49,6 +51,7 @@ export class FakeLme {
       if (!this.refreshTo) { res.statusCode = 400; return void res.end('{"error":"invalid_grant"}'); }
       return void res.end(JSON.stringify({ access_token: this.refreshTo, token_type: 'Bearer', expires_in: 3600 }));
     }
+    if (this.hang) return;
     if (req.headers.authorization !== `Bearer ${this.validBearer}`) {
       res.statusCode = 401;
       return void res.end('{"error":"invalid_token"}');

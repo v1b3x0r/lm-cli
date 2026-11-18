@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { withAccountLock } from './account-store.js';
-import { accessToken, type Endpoints } from './auth.js';
+import { accessToken, HTTP_TIMEOUT_MS, type Endpoints } from './auth.js';
 import { CliError } from './output.js';
 
 export const ACCOUNT_MCP = 'https://lme.viibe.to/mcp';
@@ -14,7 +14,7 @@ export const ACCOUNT_MCP = 'https://lme.viibe.to/mcp';
  */
 export async function callAccountTool<T>(
   home: string, name: string, args: Record<string, unknown>,
-  opts: { base?: string; endpoints?: Partial<Endpoints> } = {},
+  opts: { base?: string; endpoints?: Partial<Endpoints>; timeoutMs?: number } = {},
 ): Promise<T> {
   const base = opts.base ?? ACCOUNT_MCP;
   return withAccountLock(home, async () => {
@@ -27,7 +27,10 @@ export async function callAccountTool<T>(
       const send = (token: string) => {
         const headers = new Headers(init?.headers);
         headers.set('Authorization', `Bearer ${token}`);
-        return fetch(url, { ...init, headers, redirect: 'manual' });
+        // A stalled server must not hold the account lock: each request gets the deadline.
+        const deadline = AbortSignal.timeout(opts.timeoutMs ?? HTTP_TIMEOUT_MS);
+        const signal = init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline;
+        return fetch(url, { ...init, headers, redirect: 'manual', signal });
       };
       let res = await send(bearer);
       if (res.status === 401) {

@@ -22,14 +22,24 @@ const REFRESH_MARGIN_MS = 30_000;
 const resolve = (e?: Partial<Endpoints>): Endpoints => ({ ...DEFAULT_ENDPOINTS, ...e });
 const b64url = (b: Buffer) => b.toString('base64url');
 
-/** POST to an OAuth endpoint. Never follows redirects (codes and refresh tokens must not travel). */
-async function oauthPost<T>(url: string, contentType: string, body: string): Promise<T> {
+/** Every network call lm makes has a deadline (Go rc5 used a 20 s http.Client timeout). */
+export const HTTP_TIMEOUT_MS = 20_000;
+
+/**
+ * POST to an OAuth endpoint. Never follows redirects (codes and refresh tokens must not travel).
+ * The deadline covers the whole exchange, body included: a stalled endpoint must not keep the
+ * account lock held.
+ */
+export async function oauthPost<T>(url: string, contentType: string, body: string, timeoutMs = HTTP_TIMEOUT_MS): Promise<T> {
+  const signal = AbortSignal.timeout(timeoutMs);
   let res: Response;
-  try { res = await fetch(url, { method: 'POST', headers: { 'Content-Type': contentType }, body, redirect: 'manual' }); }
+  let text: string;
+  try { res = await fetch(url, { method: 'POST', headers: { 'Content-Type': contentType }, body, redirect: 'manual', signal }); }
   catch { throw new CliError('oauth_unreachable', 'OAuth request failed; no automatic retry'); }
   if (res.status < 200 || res.status >= 300)
     throw new CliError('oauth_refused', `OAuth endpoint answered HTTP ${res.status}; run lm login if authorization expired`);
-  const text = await res.text();
+  try { text = await res.text(); }
+  catch { throw new CliError('oauth_unreachable', 'OAuth request failed; no automatic retry'); }
   if (text.length > MAX_RESPONSE_BYTES) throw new CliError('oauth_invalid', 'invalid OAuth response');
   try { return JSON.parse(text) as T; } catch { throw new CliError('oauth_invalid', 'invalid OAuth response'); }
 }

@@ -207,3 +207,28 @@ describe('forged loopback requests', () => {
     expect(readAccount(home)!.accessToken).toBe('at-1');
   });
 });
+
+describe('OAuth request deadline', () => {
+  it('aborts a response that never starts and a body that never ends', async () => {
+    const { oauthPost } = await import('../src/auth.js');
+    const stall = createServer((req, res) => {
+      if (req.url !== '/trickle') return;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write('{');
+      const t = setInterval(() => res.write(' '), 50);
+      res.on('close', () => clearInterval(t));
+    });
+    await new Promise<void>((r) => stall.listen(0, '127.0.0.1', r));
+    const b = `http://127.0.0.1:${(stall.address() as { port: number }).port}`;
+    try {
+      for (const path of ['/hang', '/trickle']) {
+        const t0 = Date.now();
+        await expect(oauthPost(`${b}${path}`, 'application/json', '{}', 300)).rejects.toMatchObject({ code: 'oauth_unreachable' });
+        expect(Date.now() - t0).toBeLessThan(2000);
+      }
+    } finally {
+      stall.closeAllConnections();
+      stall.close();
+    }
+  });
+});
