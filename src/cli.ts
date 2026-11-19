@@ -28,7 +28,7 @@ function version(): string {
 
 const usage = () => new CliError('usage', USAGE, 2);
 
-async function run(args: string[], flags: Set<string>, ctx: Context): Promise<Result> {
+async function run(args: string[], ctx: Context): Promise<Result> {
   const [command, sub, arg, arg2, ...rest] = args;
   if (rest.length || (arg2 !== undefined && command !== 'capsules' && command !== 'doors')) throw usage();
   switch (command) {
@@ -69,7 +69,7 @@ export async function main(argv: string[], ctx: Partial<Context> = {}): Promise<
   const args = argv.filter((a) => !a.startsWith('--'));
   try {
     if ([...flags].some((f) => !known.has(f))) throw usage();
-    return emit(json, await run(args, flags, { home: configHome(), ...ctx }));
+    return emit(json, await run(args, { home: configHome(), ...ctx }));
   } catch (e) {
     return emit(json, e instanceof CliError ? e : new CliError('internal', 'unexpected failure; nothing was printed about your credentials'));
   }

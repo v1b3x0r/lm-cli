@@ -8,9 +8,10 @@ import { z } from 'zod';
 import { FakeLme, ok } from './fake-lme.js';
 
 const CAP = 'w_0123456789abcdef0123456789abcdef';
+const DID = 'acc_0123456789abcdef';
 const DOOR_URL = 'https://lme.example/t/lmc_0123456789abcdef0123456789abcdef/mcp';
 const DOORS = [
-  { door_id: 'd_1', holder: 'you', label: 'lmstudio', access: 'read', status: 'live', revocable: true,
+  { door_id: DID, holder: 'you', label: 'lmstudio', access: 'read', status: 'live', revocable: true,
     created_at: '2026-11-18T00:00:00.000Z', expires_at: '2027-02-16T00:00:00.000Z', last_used_at: '2026-11-19T09:00:00.000Z' },
   { door_id: 'pakkana', holder: 'Pakkana (custodian)', label: null, access: 'write', status: 'live', revocable: false,
     created_at: null, expires_at: null, last_used_at: null },
@@ -42,7 +43,7 @@ beforeEach(async () => {
   lme.tools = {
     world_list: () => ok({ worlds: [{ id: 'w_abc', title: 'Founder', isDefault: true }] }),
     // LME's door tools return their payload unwrapped (no { result } envelope).
-    capsule_door_open: (a) => ok({ door_id: 'd_1', label: a.label, access: 'read', url: DOOR_URL, expires_at: '2027-02-16T00:00:00.000Z', capsule_id: a.capsule_id }),
+    capsule_door_open: (a) => ok({ door_id: DID, label: a.label, access: 'read', url: DOOR_URL, expires_at: '2027-02-16T00:00:00.000Z', capsule_id: a.capsule_id }),
     capsule_door_list: (a) => ok({ capsule_id: a.capsule_id, doors: DOORS }),
     capsule_door_revoke: (a) => ok({ revoked: true, door_id: a.door_id }),
   };
@@ -59,14 +60,6 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.restoreAllMocks();
   await lme.stop();
-});
-
-describe('lm whoami', () => {
-  it('shows the default World', async () => {
-    const r = await lm('whoami', '--json');
-    expect(r.code).toBe(0);
-    expect(JSON.parse(r.out).data).toEqual({ world: { id: 'w_abc', title: 'Founder' } });
-  });
 });
 
 describe('lm whoami', () => {
@@ -106,7 +99,7 @@ describe('lm doors', () => {
     expect(r.out).toContain('This link is a key: whoever holds it can read this Capsule\'s memory until it expires or you run "lm doors revoke <capsule-id> <door-id>".');
     const j = await lm('doors', 'open', CAP, 'lmstudio', '--json');
     expect(j.out.split(DOOR_URL).length - 1).toBe(1);
-    expect(JSON.parse(j.out).data).toEqual({ door_id: 'd_1', label: 'lmstudio', access: 'read', url: DOOR_URL, expires_at: '2027-02-16T00:00:00.000Z', capsule_id: CAP });
+    expect(JSON.parse(j.out).data).toEqual({ door_id: DID, label: 'lmstudio', access: 'read', url: DOOR_URL, expires_at: '2027-02-16T00:00:00.000Z', capsule_id: CAP });
   });
 
   it('list shows the columns, the custodian and unclaimed rows, with - for empties', async () => {
@@ -114,21 +107,52 @@ describe('lm doors', () => {
     expect(r.code).toBe(0);
     const lines = r.out.trim().split('\n');
     expect(lines[0]).toMatch(/^DOOR\s+HOLDER\s+LABEL\s+ACCESS\s+STATUS\s+LAST USED\s+EXPIRES$/);
-    expect(r.out).toMatch(/d_1\s+you\s+lmstudio\s+read\s+live\s+2026-11-19\s+2027-02-16/);
+    expect(r.out).toMatch(/acc_0123456789abcdef\s+you\s+lmstudio\s+read\s+live\s+2026-11-19\s+2027-02-16/);
     expect(r.out).toMatch(/pakkana\s+Pakkana \(custodian\)\s+-\s+write\s+live\s+-\s+-/);
     expect(r.out).toMatch(/u_1\s+unclaimed read link\s+-\s+read\s+live\s+-\s+2027-01-30/);
     expect(lme.calls).toContainEqual({ name: 'capsule_door_list', args: { capsule_id: CAP } });
   });
 
-  it('revoke success copy, and never echoes a URL-looking argument', async () => {
-    const r = await lm('doors', 'revoke', CAP, 'd_1');
+  it('revoke success copy echoes only the validated door id', async () => {
+    const r = await lm('doors', 'revoke', CAP, DID);
     expect(r.code).toBe(0);
-    expect(r.out).toContain('Revoked d_1. That link no longer opens this Capsule.');
-    const u = await lm('doors', 'revoke', CAP, DOOR_URL);
-    expect(u.out.trim()).toBe('Revoked.');
-    expect(u.out + u.err).not.toContain('lmc_');
-    const j = await lm('doors', 'revoke', CAP, DOOR_URL, '--json');
-    expect(j.out + j.err).not.toContain('lmc_');
+    expect(r.out).toContain(`Revoked ${DID}. That link no longer opens this Capsule.`);
+  });
+
+  it('bad ids are usage errors, never echoed, and never reach the server', async () => {
+    const cases = [
+      ['doors', 'list', 'nope'], ['doors', 'list', DOOR_URL], ['doors', 'open', DOOR_URL, 'x'],
+      ['doors', 'revoke', 'nope', DID], ['doors', 'revoke', DOOR_URL, DID],
+      ['doors', 'revoke', CAP, 'nope'], ['doors', 'revoke', CAP, DOOR_URL],
+    ];
+    for (const argv of cases) for (const json of [[], ['--json']]) {
+      const r = await lm(...argv, ...json);
+      expect(r.code, argv.join(' ')).toBe(2);
+      expect(r.out + r.err).not.toContain('lmc_');
+      expect(r.out + r.err).not.toContain('nope');
+      expect(r.err + r.out).toMatch(/lm capsules list|lm doors list <capsule-id>/);
+    }
+    expect(lme.calls).toEqual([]);
+  });
+
+  it('open prints no URL unless the door is read with an https url', async () => {
+    for (const bad of [{ access: 'write', url: DOOR_URL }, { access: 'read', url: 'http://evil.example/x' }, { access: 'read', url: 42 }]) {
+      lme.tools.capsule_door_open = (a) => ({ content: [{ type: 'text', text: 'x' }], structuredContent: { door_id: DID, label: a.label, expires_at: '2027-01-01', capsule_id: a.capsule_id, ...bad } });
+      const r = await lm('doors', 'open', CAP, 'x');
+      expect(r.code).toBe(1);
+      expect(r.out + r.err).not.toContain('evil.example');
+      expect(r.out + r.err).not.toContain('lmc_');
+    }
+  });
+
+  it('revoke needs revoked true and the same door id back', async () => {
+    for (const bad of [{ revoked: false, door_id: DID }, { revoked: true, door_id: 'acc_ffffffffffffffff' }, { revoked: true, door_id: DOOR_URL }]) {
+      lme.tools.capsule_door_revoke = () => ok(bad);
+      const r = await lm('doors', 'revoke', CAP, DID);
+      expect(r.code).toBe(1);
+      expect(r.out).not.toContain('Revoked');
+      expect(r.out + r.err).not.toContain('lmc_');
+    }
   });
 
   it('shows LME\'s refusal text', async () => {

@@ -75,7 +75,7 @@ export async function callAccountTool<T>(
       }
       if (result.isError)
         throw new CliError('server_refused',
-          'Living Memory refused that request (for example: the label is taken or not allowed, or the door limit is reached). Check with lm doors list.');
+          'Living Memory refused that request (for example: the label is taken or not allowed, or the door limit is reached).');
       return result.structuredContent as T;
     } catch (e) {
       if (e instanceof CliError) throw e;
