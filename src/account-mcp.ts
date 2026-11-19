@@ -3,10 +3,10 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { withAccountLock } from './account-store.js';
 import { accessToken, HTTP_TIMEOUT_MS, type Endpoints } from './auth.js';
 import { CliError } from './output.js';
+import { safeText } from './text.js';
 
 /**
- * LME's door for this CLI onto its OAuth rail. The public /mcp withholds the client tools (and
- * access_list) from listed chat apps; /cli/mcp is the same rail, same token, with them offered.
+ * LME's door for this CLI onto its OAuth rail. The public /mcp withholds the client tools from listed chat apps; /cli/mcp is the same rail, same token, with them offered.
  */
 export const ACCOUNT_MCP = 'https://lme.viibe.to/cli/mcp';
 
@@ -18,7 +18,7 @@ export const ACCOUNT_MCP = 'https://lme.viibe.to/cli/mcp';
  */
 export async function callAccountTool<T>(
   home: string, name: string, args: Record<string, unknown>,
-  opts: { base?: string; endpoints?: Partial<Endpoints>; timeoutMs?: number } = {},
+  opts: { base?: string; endpoints?: Partial<Endpoints>; timeoutMs?: number; surfaceRefusal?: boolean } = {},
 ): Promise<T> {
   const base = opts.base ?? ACCOUNT_MCP;
   return withAccountLock(home, async () => {
@@ -55,7 +55,7 @@ export async function callAccountTool<T>(
         throw new CliError('server_unreachable', 'cannot reach Living Memory; try again later');
       }
       // The tool must exist AND declare every argument we send: an MCP server strips unknown
-      // arguments silently, so an older client_mint would drop access:'read' and mint a WRITE door.
+      // arguments silently, so an older server could drop a restricting argument and open a wider door.
       const { tools } = await client.listTools();
       const tool = tools.find((t) => t.name === name);
       const props = (tool?.inputSchema.properties ?? {}) as Record<string, { enum?: unknown[] }>;
@@ -67,9 +67,15 @@ export async function callAccountTool<T>(
       // A refusal's text is a server response body, and the spec forbids echoing those: no
       // blocklist can prove it holds no URL or credential. The code says what happened; the
       // message says where to look.
+      // Capsule tools author their refusals deliberately (never a URL or credential), so those
+      // callers opt in to showing LME's own text.
+      if (result.isError && opts.surfaceRefusal) {
+        const text = (result.content as Array<{ type: string; text?: string }>)[0]?.text;
+        if (text) throw new CliError('server_refused', safeText(text).slice(0, 300));
+      }
       if (result.isError)
         throw new CliError('server_refused',
-          'Living Memory refused that request (for example: the label is taken or not allowed, or the door limit is reached). Check with lm doors list.');
+          'Living Memory refused that request (for example: the label is taken or not allowed, or the door limit is reached).');
       return result.structuredContent as T;
     } catch (e) {
       if (e instanceof CliError) throw e;
