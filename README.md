@@ -3,20 +3,13 @@
 <p align="center"><b>Give an AI a key to your memory, and take it back with one command.</b></p>
 
 `lm` is the terminal companion for [Living Memory](https://living-memory.app). Sign in,
-open a **read-only door** into your World for any MCP client (LM Studio, a local agent, a
-friend's tool), see **who can reach your memory right now**, and close any door in one command.
+create **Capsules**, open a **read-only door** into one Capsule for any MCP client (LM Studio, a
+local agent, a friend's tool), see who holds a door, and close it in one command.
 
 ```text
-$ npx @nature-labs/lm@alpha doors open lmstudio --read
+$ npx @nature-labs/lm@alpha doors open w_0123456789abcdef0123456789abcdef lmstudio
 https://lme.viibe.to/t/…/mcp
-This link is a key: whoever holds it can read everything in this World until it expires or you run "lm doors revoke lmstudio".
-
-$ npx @nature-labs/lm@alpha access list
-ACCESS  PRINCIPAL  CLIENT          SCOPE  LAST USED
-rw-     human      owner           world  2m ago
-r--     holder     lmstudio        world  1h ago
-rw-     service    pakkana-web     world  5m ago
----     holder     old-agent       world  revoked
+This link is a key: whoever holds it can read this Capsule's memory until it expires or you run "lm doors revoke <capsule-id> <door-id>".
 ```
 
 ## Table of Contents
@@ -37,8 +30,8 @@ rw-     service    pakkana-web     world  5m ago
   `memory_state`, `world_list`) and nothing else. It cannot write, forget, or post.
 - **Works with any MCP client.** A door is a plain Streamable HTTP link. Your model and system
   prompt stay exactly as they are.
-- **See who has access.** `lm access list` shows every person, agent, link and service that
-  can reach your World, `ls -l` style, with when each was last used.
+- **One Capsule at a time.** A door reaches the Capsule you opened it on and no other.
+- **See who holds a door.** `lm doors list <capsule-id>` shows each door, who holds it, and when it was last used.
 - **Take it back instantly.** `lm doors revoke` closes a door; the very next call through it is refused.
 - **Safe to script.** Every command speaks one-line JSON with `--json` and stable exit codes.
 
@@ -69,10 +62,11 @@ npx @nature-labs/lm@alpha whoami
 | `lm login` | Sign in with your browser. On Windows the link is printed for you to open. |
 | `lm logout` | Forget this computer's sign-in. |
 | `lm whoami` | Show your default World. |
-| `lm doors list` | List the doors into your World: label, access, created, expires. |
-| `lm doors open <label> --read` | Open a read-only door. Its link is printed **once**. |
-| `lm doors revoke <label>` | Close a door. |
-| `lm access list` | Who can reach your World's memory right now. |
+| `lm capsules list` | List your Capsules (find a Capsule ID here). |
+| `lm capsules create <name> <note>` | Create a Capsule with a first note. |
+| `lm doors list <capsule-id>` | List the doors into a Capsule: door, holder, label, access, status, last used, expires. |
+| `lm doors open <capsule-id> <label>` | Open a read-only door into a Capsule. Its link is printed **once**. |
+| `lm doors revoke <capsule-id> <door-id>` | Close a door. |
 | `lm doctor door <url>` | Check a door answers and is read-only. Never prints the link back. |
 | `lm version` | Print the version. |
 
@@ -80,15 +74,16 @@ Add `--json` to any command for machine-readable output.
 
 ### Examples
 
-- **Let LM Studio read your memory.** Open a door, then paste the link into LM Studio as an
+- **Let LM Studio read one Capsule.** Open a door, then paste the link into LM Studio as an
   MCP server (Streamable HTTP):
 
   ```bash
-  lm doors open lmstudio --read
+  lm capsules list
+  lm doors open w_0123456789abcdef0123456789abcdef lmstudio
   ```
 
   > [!WARNING]
-  > The link is a key. Anyone holding it can read your World until it expires or you revoke
+  > The link is a key. Anyone holding it can read that Capsule until it expires or you revoke
   > it. Don't paste it in chats, screenshots, or issues.
 
 - **Check a link someone gave you** (is it alive? can it write?):
@@ -100,23 +95,17 @@ Add `--json` to any command for machine-readable output.
   # Tools: memory_search, memory_state, world_list
   ```
 
-- **See who's been in, then close a door:**
+- **See who holds a door, then close it:**
 
   ```bash
-  lm access list
-  lm doors revoke lmstudio
-  # Revoked "lmstudio". That link no longer opens this World.
+  lm doors list w_0123456789abcdef0123456789abcdef
+  lm doors revoke w_0123456789abcdef0123456789abcdef <door-id>
+  # Revoked <door-id>. That link no longer opens this Capsule.
   ```
 
-How to read `lm access list`:
-
-| Column | Meaning |
-| --- | --- |
-| `ACCESS` | What it can do **right now**: `rw-` read and write, `r--` read only, `---` nothing. |
-| `PRINCIPAL` | `human` (you), `agent` (a verified agent), `holder` (whoever holds a link), `service` (a Living Memory app). |
-| `CLIENT` | The label it was given. |
-| `SCOPE` | What it can reach. Today always `world`. |
-| `LAST USED` | Roughly when it was last used (hour-granular, best effort), or why it can't be: `revoked`, `expired`, `suspended`. |
+**What `lm doors list` does not show.** Pakkana's own doors and a Pakkana visitor QR are managed
+in Pakkana, not here. A visitor QR is a separate read link that `lm` does not control, so
+`lm doors revoke` will not close it (known exposure KSE-1).
 
 ### JSON output
 
@@ -130,8 +119,8 @@ With `--json`, every command prints exactly one line:
 Exit codes: `0` success, `1` failure, `2` usage error.
 
 ```bash
-# Labels of every door that can still be used
-lm access list --json | jq -r '.data[] | select(.grant.effective) | .client.label'
+# IDs of every door that is still live on a Capsule
+lm doors list w_0123456789abcdef0123456789abcdef --json | jq -r '.data.doors[] | select(.status == "live") | .door_id'
 ```
 
 ## Where your sign-in lives

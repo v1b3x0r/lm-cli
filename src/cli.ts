@@ -2,7 +2,6 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { login, logout } from './auth.js';
-import { accessList } from './commands/access.js';
 import { capsulesCreate, capsulesList } from './commands/capsules.js';
 import { doctor } from './commands/doctor.js';
 import { doorsList, doorsOpen, doorsRevoke, whoami } from './commands/doors.js';
@@ -16,10 +15,9 @@ const USAGE = `usage: lm <command> [--json]
   lm whoami                       Show your default World
   lm capsules list                List your Capsules
   lm capsules create <name> <note>  Create a Capsule with a first note
-  lm doors list                   List the doors into your World
-  lm doors open <label> --read    Open a read-only door (prints its link once)
-  lm doors revoke <label>         Close a door
-  lm access list                  Who can reach your World's memory right now
+  lm doors list <capsule-id>      List the doors into a Capsule (find the ID: lm capsules list)
+  lm doors open <capsule-id> <label>  Open a read-only door into a Capsule (prints its link once)
+  lm doors revoke <capsule-id> <door-id>  Close a door
   lm doctor door <url>            Check a door: reachable? read-only? (never prints it back)
   lm version                      Print the lm version`;
 
@@ -32,7 +30,7 @@ const usage = () => new CliError('usage', USAGE, 2);
 
 async function run(args: string[], flags: Set<string>, ctx: Context): Promise<Result> {
   const [command, sub, arg, arg2, ...rest] = args;
-  if (rest.length || (arg2 !== undefined && command !== 'capsules')) throw usage();
+  if (rest.length || (arg2 !== undefined && command !== 'capsules' && command !== 'doors')) throw usage();
   switch (command) {
     case 'version':
       return { ok: true, data: { version: version() }, human: version() };
@@ -48,9 +46,9 @@ async function run(args: string[], flags: Set<string>, ctx: Context): Promise<Re
       if (sub) throw usage();
       return whoami(ctx);
     case 'doors':
-      if (sub === 'list' && !arg) return doorsList(ctx);
-      if (sub === 'open' && arg) return doorsOpen(ctx, arg, flags.has('--read'));
-      if (sub === 'revoke' && arg) return doorsRevoke(ctx, arg);
+      if (sub === 'list' && arg && !arg2) return doorsList(ctx, arg);
+      if (sub === 'open' && arg && arg2) return doorsOpen(ctx, arg, arg2);
+      if (sub === 'revoke' && arg && arg2) return doorsRevoke(ctx, arg, arg2);
       throw usage();
     case 'capsules':
       if (sub === 'list' && !arg) return capsulesList(ctx);
@@ -58,9 +56,6 @@ async function run(args: string[], flags: Set<string>, ctx: Context): Promise<Re
       throw usage();
     case 'doctor':
       if (sub === 'door' && arg) return doctor(arg);
-      throw usage();
-    case 'access':
-      if (sub === 'list' && !arg) return accessList(ctx);
       throw usage();
     default:
       throw usage();
@@ -70,7 +65,7 @@ async function run(args: string[], flags: Set<string>, ctx: Context): Promise<Re
 export async function main(argv: string[], ctx: Partial<Context> = {}): Promise<number> {
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
   const json = flags.has('--json');
-  const known = new Set(['--json', '--read']);
+  const known = new Set(['--json']);
   const args = argv.filter((a) => !a.startsWith('--'));
   try {
     if ([...flags].some((f) => !known.has(f))) throw usage();

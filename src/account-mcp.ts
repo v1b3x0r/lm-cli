@@ -6,8 +6,7 @@ import { CliError } from './output.js';
 import { safeText } from './text.js';
 
 /**
- * LME's door for this CLI onto its OAuth rail. The public /mcp withholds the client tools (and
- * access_list) from listed chat apps; /cli/mcp is the same rail, same token, with them offered.
+ * LME's door for this CLI onto its OAuth rail. The public /mcp withholds the client tools from listed chat apps; /cli/mcp is the same rail, same token, with them offered.
  */
 export const ACCOUNT_MCP = 'https://lme.viibe.to/cli/mcp';
 
@@ -56,7 +55,7 @@ export async function callAccountTool<T>(
         throw new CliError('server_unreachable', 'cannot reach Living Memory; try again later');
       }
       // The tool must exist AND declare every argument we send: an MCP server strips unknown
-      // arguments silently, so an older client_mint would drop access:'read' and mint a WRITE door.
+      // arguments silently, so an older server could drop a restricting argument and open a wider door.
       const { tools } = await client.listTools();
       const tool = tools.find((t) => t.name === name);
       const props = (tool?.inputSchema.properties ?? {}) as Record<string, { enum?: unknown[] }>;
