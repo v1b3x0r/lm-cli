@@ -3,6 +3,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { login, logout } from './auth.js';
 import { accessList } from './commands/access.js';
+import { capsulesCreate, capsulesList } from './commands/capsules.js';
 import { doctor } from './commands/doctor.js';
 import { doorsList, doorsOpen, doorsRevoke, whoami } from './commands/doors.js';
 import type { Context } from './context.js';
@@ -13,6 +14,8 @@ const USAGE = `usage: lm <command> [--json]
 
   lm login | lm logout            Sign in to Living Memory, or forget this computer's sign-in
   lm whoami                       Show your default World
+  lm capsules list                List your Capsules
+  lm capsules create <name> <note>  Create a Capsule with a first note
   lm doors list                   List the doors into your World
   lm doors open <label> --read    Open a read-only door (prints its link once)
   lm doors revoke <label>         Close a door
@@ -28,8 +31,8 @@ function version(): string {
 const usage = () => new CliError('usage', USAGE, 2);
 
 async function run(args: string[], flags: Set<string>, ctx: Context): Promise<Result> {
-  const [command, sub, arg, ...rest] = args;
-  if (rest.length) throw usage();
+  const [command, sub, arg, arg2, ...rest] = args;
+  if (rest.length || (arg2 !== undefined && command !== 'capsules')) throw usage();
   switch (command) {
     case 'version':
       return { ok: true, data: { version: version() }, human: version() };
@@ -48,6 +51,10 @@ async function run(args: string[], flags: Set<string>, ctx: Context): Promise<Re
       if (sub === 'list' && !arg) return doorsList(ctx);
       if (sub === 'open' && arg) return doorsOpen(ctx, arg, flags.has('--read'));
       if (sub === 'revoke' && arg) return doorsRevoke(ctx, arg);
+      throw usage();
+    case 'capsules':
+      if (sub === 'list' && !arg) return capsulesList(ctx);
+      if (sub === 'create' && arg && arg2) return capsulesCreate(ctx, arg, arg2);
       throw usage();
     case 'doctor':
       if (sub === 'door' && arg) return doctor(arg);

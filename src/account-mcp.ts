@@ -18,7 +18,7 @@ export const ACCOUNT_MCP = 'https://lme.viibe.to/cli/mcp';
  */
 export async function callAccountTool<T>(
   home: string, name: string, args: Record<string, unknown>,
-  opts: { base?: string; endpoints?: Partial<Endpoints>; timeoutMs?: number } = {},
+  opts: { base?: string; endpoints?: Partial<Endpoints>; timeoutMs?: number; surfaceRefusal?: boolean } = {},
 ): Promise<T> {
   const base = opts.base ?? ACCOUNT_MCP;
   return withAccountLock(home, async () => {
@@ -67,6 +67,12 @@ export async function callAccountTool<T>(
       // A refusal's text is a server response body, and the spec forbids echoing those: no
       // blocklist can prove it holds no URL or credential. The code says what happened; the
       // message says where to look.
+      // Capsule tools author their refusals deliberately (never a URL or credential), so those
+      // callers opt in to showing LME's own text.
+      if (result.isError && opts.surfaceRefusal) {
+        const text = (result.content as Array<{ type: string; text?: string }>)[0]?.text;
+        if (text) throw new CliError('server_refused', text);
+      }
       if (result.isError)
         throw new CliError('server_refused',
           'Living Memory refused that request (for example: the label is taken or not allowed, or the door limit is reached). Check with lm doors list.');
