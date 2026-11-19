@@ -16,8 +16,7 @@ function columns(rows: string[][]): string {
 export async function whoami(ctx: Context): Promise<Result> {
   const { worlds } = await callAccountTool<{ worlds: World[] }>(ctx.home, 'world_list', {}, ctx);
   const w = worlds.find((x) => x.isDefault) ?? worlds[0];
-  // A Free Room account has no World; its room is what whoami shows.
-  if (!w) return { ok: true, data: { world: null, room: 'free' }, human: 'Free Room  (no World on this account; see lm capsules list)' };
+  if (!w) throw new CliError('no_world', 'this account has no World yet');
   return { ok: true, data: { world: { id: w.id, title: w.title } }, human: `${w.title === null ? '(untitled)' : safeText(w.title)}  ${safeText(w.id)}` };
 }
 

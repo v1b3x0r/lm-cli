@@ -98,6 +98,14 @@ describe('lm capsules create', () => {
     expect(r.err).toContain('Free Room limit reached.');
   });
 
+  it('strips terminal escapes from refusal text and caps its length', async () => {
+    lme.tools.capsule_create = () => ({ isError: true, content: [{ type: 'text', text: `bad\u001b[2J\u0007${'x'.repeat(500)}` }] });
+    const r = await lm('capsules', 'create', 'Trip', 'note');
+    expect(r.err).not.toContain('\u001b');
+    expect(r.err).not.toContain('\u0007');
+    expect(r.err.length).toBeLessThan(320);
+  });
+
   it('needs exactly a name and a note', async () => {
     expect((await lm('capsules', 'create', 'Trip')).code).toBe(2);
     expect((await lm('capsules', 'create')).code).toBe(2);
@@ -105,10 +113,12 @@ describe('lm capsules create', () => {
 });
 
 describe('lm whoami on a Free Room account', () => {
-  it('prints the room instead of failing with no_world', async () => {
+  it('prints the room LME lists as the default World', async () => {
+    lme.tools.world_list = () => ok({ worlds: [{ id: ID_A, title: 'Free Room', isDefault: true }] });
     const r = await lm('whoami');
     expect(r.code).toBe(0);
     expect(r.out).toContain('Free Room');
+    expect(r.out).toContain(ID_A);
     expect(r.err).toBe('');
   });
 });

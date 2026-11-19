@@ -3,6 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { withAccountLock } from './account-store.js';
 import { accessToken, HTTP_TIMEOUT_MS, type Endpoints } from './auth.js';
 import { CliError } from './output.js';
+import { safeText } from './text.js';
 
 /**
  * LME's door for this CLI onto its OAuth rail. The public /mcp withholds the client tools (and
@@ -71,7 +72,7 @@ export async function callAccountTool<T>(
       // callers opt in to showing LME's own text.
       if (result.isError && opts.surfaceRefusal) {
         const text = (result.content as Array<{ type: string; text?: string }>)[0]?.text;
-        if (text) throw new CliError('server_refused', text);
+        if (text) throw new CliError('server_refused', safeText(text).slice(0, 300));
       }
       if (result.isError)
         throw new CliError('server_refused',
