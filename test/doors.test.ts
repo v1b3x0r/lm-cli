@@ -68,6 +68,26 @@ describe('lm whoami', () => {
     expect(r.code).toBe(0);
     expect(JSON.parse(r.out).data).toEqual({ world: { id: 'w_abc', title: 'Founder' } });
   });
+
+  it('never puts the bearer or a door url in an error', async () => {
+    lme.tools.world_list = () => ({ content: [{ type: 'text', text: `refused ${DOOR_URL} for at-good` }], isError: true });
+    for (const argv of [['whoami', '--json'], ['whoami']]) {
+      const r = await lm(...argv);
+      expect(r.code).toBe(1);
+      expect(r.out + r.err).not.toContain(DOOR_URL);
+      expect(r.out + r.err).not.toContain('lmc_');
+      expect(r.out + r.err).not.toContain('at-good');
+    }
+  });
+
+  it('reports a server refusal on world_list with fixed text, never the server body', async () => {
+    lme.tools.world_list = () => ({ content: [{ type: 'text', text: 'Refused LME.VIIBE.TO/t/LMC_0123456789ABCDEF/mcp sk-live-9f8e7d6c5b4a' }], isError: true });
+    const r = await lm('whoami', '--json');
+    const e = JSON.parse(r.out).error;
+    expect(e.code).toBe('server_refused');
+    expect(e.message).toBe('Living Memory refused that request (for example: the label is taken or not allowed, or the door limit is reached).');
+    expect(r.out + r.err).not.toMatch(/LMC_|sk-live|VIIBE|Refused/);
+  });
 });
 
 describe('lm doors', () => {

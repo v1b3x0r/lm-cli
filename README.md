@@ -27,7 +27,7 @@ This link is a key: whoever holds it can read this Capsule's memory until it exp
 ## Features
 
 - **Read-only by design.** A door can search and read your memory (`memory_search`,
-  `memory_state`, `world_list`) and nothing else. It cannot write, forget, or post.
+  `memory_state`) and nothing else. It cannot write, forget, or post.
 - **Works with any MCP client.** A door is a plain Streamable HTTP link. Your model and system
   prompt stay exactly as they are.
 - **One Capsule at a time.** A door reaches the Capsule you opened it on and no other.
@@ -92,7 +92,7 @@ Add `--json` to any command for machine-readable output.
   lm doctor door "https://lme.viibe.to/t/…/mcp"
   # Door: reachable
   # Read-only: yes (no tool can write, delete or post)
-  # Tools: memory_search, memory_state, world_list
+  # Tools: memory_search, memory_state
   ```
 
 - **See who holds a door, then close it:**
