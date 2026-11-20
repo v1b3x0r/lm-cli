@@ -30,13 +30,19 @@ so anything likely to change belongs there, not in the README.
 
 Do not push a `v*` tag: `.github/workflows/publish.yml` publishes on tags but the repo has no
 `NPM_TOKEN`, so the run would fail. Until Trusted Publishing is set up on npmjs.com for this package,
-the founder publishes by hand from the release commit:
+the founder publishes by hand from the release commit, in a real terminal (iTerm, Terminal.app):
 
 ```bash
 npm publish --access public --tag alpha
 ```
 
-`--tag alpha` matters: without it the alpha becomes `latest`.
+Not through Claude Code's `!`: it has no TTY, and npm only offers the passkey/OTP step on a TTY
+(`npm/lib/utils/auth.js`, `otplease`), so it fails with EOTP even with `--auth-type=web`.
+`npm login` through `!` does work. After publishing, the registry can take a few minutes to serve the
+new version.
+
+`--tag alpha` matters from the second publish on: without it the alpha becomes `latest`. The first
+publish of a package always sets `latest` too (0.2.0-alpha.0 is both `latest` and `alpha`).
 
 ## After publishing
 
