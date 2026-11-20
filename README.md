@@ -10,6 +10,9 @@
 create **Capsules**, open a **read-only door** into one Capsule for any MCP client (LM Studio, a
 local agent, a friend's tool), see who holds a door, and close it in one command.
 
+**Try it first, no account needed:** the [Harbor demo Capsule](https://living-memory.app/harbor)
+answers questions about Living Memory. Full guides live at [docs.living-memory.app](https://docs.living-memory.app).
+
 ```text
 $ npx @nature-labs/lm@alpha doors open w_0123456789abcdef0123456789abcdef lmstudio
 https://lme.viibe.to/t/…/mcp
@@ -23,8 +26,10 @@ This link is a key: whoever holds it can read this Capsule's memory until it exp
   - [Commands](#commands)
   - [Examples](#examples)
   - [JSON output](#json-output)
+- [For AI agents](#for-ai-agents)
 - [Where your sign-in lives](#where-your-sign-in-lives)
 - [Set up locally](#set-up-locally)
+- [Help and feedback](#help-and-feedback)
 - [Earlier versions](#earlier-versions)
 - [License](#license)
 
@@ -127,6 +132,14 @@ Exit codes: `0` success, `1` failure, `2` usage error.
 lm doors list w_0123456789abcdef0123456789abcdef --json | jq -r '.data.doors[] | select(.status == "live") | .door_id'
 ```
 
+## For AI agents
+
+- Living Memory's guide for agents is at [living-memory.app/llms.txt](https://living-memory.app/llms.txt).
+- A door link is a key. Never repeat it in a reply, a log, a commit or an issue. To check one,
+  run `lm doctor door <url>`: it never prints the link back.
+- A door is read-only. If a Capsule has no answer, say so; nothing you do through a door can add to it.
+- Use `--json` and the exit codes above instead of parsing the human output.
+
 ## Where your sign-in lives
 
 `lm` keeps one file, `account.json`, readable only by you (mode `0600`) in:
@@ -151,10 +164,18 @@ npm run build     # compile to dist/
 node dist/cli.js version
 ```
 
+## Help and feedback
+
+- Bugs and ideas: [GitHub issues](https://github.com/v1b3x0r/lm-cli/issues). Never paste a door link.
+- Building a client or a Worker, or bringing a model? Ask the [Harbor demo Capsule](https://living-memory.app/harbor)
+  what works today and what we are designing with Pioneers, or write to support@living-memory.app.
+
 ## Earlier versions
 
-The Go `lm` 0.1.0-rc.5 (local memory, Rooms) and its guides remain available from the
+The Go `lm` 0.1.0-rc.5 (local memory, Rooms) is a legacy version and no longer the recommended path.
+It and its guides remain available from the
 [v0.1.0-rc.5 release](https://github.com/v1b3x0r/lm-cli/releases/tag/v0.1.0-rc.5).
+Both install a command named `lm`: if `lm version` prints `0.1.0-rc.5`, the Go version comes first on your `PATH`.
 
 ## License
 

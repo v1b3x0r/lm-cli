@@ -3,6 +3,25 @@
   "version": "0.2.0-alpha.0",
   "description": "Living Memory from your terminal: sign in, open read-only doors, see who has access.",
   "license": "Apache-2.0",
+  "homepage": "https://docs.living-memory.app/cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/v1b3x0r/lm-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/v1b3x0r/lm-cli/issues"
+  },
+  "keywords": [
+    "living-memory",
+    "mcp",
+    "model-context-protocol",
+    "ai-memory",
+    "agent-memory",
+    "capsule",
+    "read-only",
+    "cli",
+    "llm"
+  ],
   "type": "module",
   "bin": {
     "lm": "dist/cli.js"
