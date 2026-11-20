@@ -1,7 +1,7 @@
 <h1 align="center">lm</h1>
 
 <p align="center">
-  <a href="https://living-memory.app/harbor"><img src="https://living-memory.app/harbor-readme-cover.png" alt="Living Memory Harbor demo" width="960"></a>
+  <a href="https://living-memory.app/harbor"><img src="https://living-memory.app/living-memory-genesis.jpg" alt="Living Memory Harbor demo" width="960"></a>
 </p>
 
 <p align="center"><b>Give an AI a key to your memory, and take it back with one command.</b></p>
