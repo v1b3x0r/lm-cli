@@ -41,7 +41,8 @@ Not through Claude Code's `!`: it has no TTY, and npm only offers the passkey/OT
 `npm login` through `!` does work. After publishing, the registry can take a few minutes to serve the
 new version.
 
-`--tag alpha` matters: without it the alpha becomes `latest`.
+`--tag alpha` matters from the second publish on: without it the alpha becomes `latest`. The first
+publish of a package always sets `latest` too (0.2.0-alpha.0 is both `latest` and `alpha`).
 
 ## After publishing
 
