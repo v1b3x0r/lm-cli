@@ -61,8 +61,15 @@ export async function callAccountTool<T>(
       const props = (tool?.inputSchema.properties ?? {}) as Record<string, { enum?: unknown[] }>;
       const understood = Object.entries(args).every(([k, v]) =>
         Object.hasOwn(props, k) && (!props[k]?.enum || props[k]!.enum!.includes(v)));
-      if (!tool || !understood)
+      if (!tool || !understood) {
+        // The lapsed-World mount lists and revokes doors but opens none and has no world_list
+        // (by design). An older server has none of the door tools, so the two never overlap.
+        const names = new Set(tools.map((t) => t.name));
+        if (!tool && names.has('capsule_door_list') && !names.has('capsule_door_open'))
+          throw new CliError('world_lapsed',
+            'your Living Memory World subscription has lapsed: you can still list and revoke doors (lm doors list, lm doors revoke), but not open new ones');
         throw new CliError('server_unsupported', 'this Living Memory server does not support that command yet');
+      }
       const result = await client.callTool({ name, arguments: args });
       // A refusal's text is a server response body, and the spec forbids echoing those: no
       // blocklist can prove it holds no URL or credential. The code says what happened; the

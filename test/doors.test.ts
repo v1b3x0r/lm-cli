@@ -203,11 +203,27 @@ describe('lm doors', () => {
     expect(JSON.parse(r.out).error.code).toBe('not_signed_in');
   });
 
-  it('maps a missing tool to server_unsupported', async () => {
-    delete lme.tools.capsule_door_open;
+  it('maps a missing tool to server_unsupported (an older server has none of the door tools)', async () => {
+    for (const t of ['capsule_door_open', 'capsule_door_list', 'capsule_door_revoke']) delete lme.tools[t];
     const r = await lm('doors', 'open', CAP, 'x', '--json');
     expect(r.code).toBe(1);
     expect(JSON.parse(r.out).error.code).toBe('server_unsupported');
+  });
+
+  // The lapsed-World mount lists and revokes doors but has no capsule_door_open and no world_list.
+  it.each([
+    [['doors', 'open', CAP, 'x']],
+    [['whoami']],
+  ])('says the World lapsed, not "unsupported", for lm %s on a lapsed mount', async (argv) => {
+    delete lme.tools.capsule_door_open;
+    delete lme.tools.world_list;
+    const r = await lm(...argv, '--json');
+    expect(r.code).toBe(1);
+    const err = JSON.parse(r.out).error;
+    expect(err.code).toBe('world_lapsed');
+    expect(err.message).toMatch(/lapsed/);
+    expect(err.message).toMatch(/list and revoke/);
+    expect(err.message).not.toMatch(/does not support/);
   });
 });
 
